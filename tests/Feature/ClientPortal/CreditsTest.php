@@ -14,7 +14,7 @@ namespace Tests\Feature\ClientPortal;
 
 use App\DataMapper\ClientSettings;
 use App\DataMapper\CompanySettings;
-use App\Http\Livewire\CreditsTable;
+use App\Livewire\CreditsTable;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientContact;
@@ -25,20 +25,23 @@ use App\Utils\Traits\AppSetup;
 use Faker\Factory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Livewire\Livewire;
-use function now;
 use Tests\TestCase;
+
+use function now;
 
 class CreditsTest extends TestCase
 {
     use DatabaseTransactions;
     use AppSetup;
 
+    private $faker;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->faker = Factory::create();
-        $this->buildCache(true);
+
     }
 
     public function testShowingOnlyCreditsWithDueDateLessOrEqualToNow()
@@ -100,10 +103,12 @@ class CreditsTest extends TestCase
         $c2->load('client');
         $c3->load('client');
 
-        Livewire::test(CreditsTable::class, ['company' => $company])
+        Livewire::test(CreditsTable::class, ['company_id' => $company->id, 'db' => $company->db])
             ->assertDontSee('testing-number-01')
             ->assertSee('testing-number-02')
             ->assertSee('testing-number-03');
+
+        $user->forceDelete();
     }
 
     public function testShowingCreditsWithNullDueDate()
@@ -167,9 +172,12 @@ class CreditsTest extends TestCase
 
         $this->actingAs($client->contacts->first(), 'contact');
 
-        Livewire::test(CreditsTable::class, ['company' => $company])
+        Livewire::test(CreditsTable::class, ['company_id' => $company->id, 'db' => $company->db])
             ->assertSee('testing-number-01')
             ->assertSee('testing-number-02')
             ->assertSee('testing-number-03');
+
+        $account->delete();
+
     }
 }

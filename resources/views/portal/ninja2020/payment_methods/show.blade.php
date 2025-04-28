@@ -31,7 +31,7 @@
                                 {{ ctrans('texts.type') }}
                             </dt>
                             <dd class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                                {{ $payment_method->meta?->brand }}
+                                {{ property_exists($payment_method->meta, 'brand') ? $payment_method->meta?->brand : ''}}
                                 {{ property_exists($payment_method->meta, 'scheme') ? $payment_method->meta?->scheme : '' }}
                             </dd>
                         </div>
@@ -54,7 +54,7 @@
                                 {{ ctrans('texts.date_created') }}
                             </dt>
                             <dd class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                                {{ $payment_method->formatDateTimestamp($payment_method->created_at, auth()->user()->client->date_format()) }}
+                                {{ $payment_method->formatDateTimestamp($payment_method->created_at, auth()->guard('contact')->user()->client->date_format()) }}
                             </dd>
                         </div>
                     @endif
@@ -100,9 +100,15 @@
                         </div>
                         <div class="mt-5 sm:mt-0 sm:ml-6 sm:flex-shrink-0 sm:flex sm:items-center">
                             <div class="inline-flex rounded-md shadow-sm" x-data="{ open: false }">
+                            @if (substr($payment_method->token, 0, 2) == 'pm') 
+                                <a href="{{ $payment_method->meta?->next_action }}" class="button button-primary bg-primary">
+                                    {{ ctrans('texts.complete_verification') }}
+                                </a>
+                            @elseif(substr($payment_method->gateway_customer_reference, 0, 3) == 'cus') 
                                 <a href="{{ route('client.payment_methods.verification', ['payment_method' => $payment_method->hashed_id, 'method' => \App\Models\GatewayType::BANK_TRANSFER]) }}" class="button button-primary bg-primary">
                                     {{ ctrans('texts.complete_verification') }}
                                 </a>
+                            @endif
                             </div>
                         </div>
                     </div>
@@ -110,7 +116,7 @@
             </div>
         @endif
 
-        @livewire('payment-methods.update-default-method', ['token' => $payment_method, 'client' => $client])
+        @livewire('payment-methods.update-default-method', ['token_id' => $payment_method->id, 'db' => $client->company->db])
         
         <div class="mt-4 mb-4 bg-white shadow sm:rounded-lg">
             <div class="px-4 py-5 sm:p-6">
@@ -141,8 +147,14 @@
 
 @section('footer')
     <script>
-        Livewire.on('UpdateDefaultMethod::method-updated', event => {
-            document.querySelector('span[data-ref=success-label]').classList.remove('hidden');
+
+        document.addEventListener('livewire:init', () => {
+
+            Livewire.on('UpdateDefaultMethod::method-updated', event => {
+                document.querySelector('span[data-ref=success-label]').classList.remove('hidden');
+            });
+
         });
-    </script>
+
+        </script>
 @endsection

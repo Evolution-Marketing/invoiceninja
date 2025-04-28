@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -21,6 +21,7 @@ use App\Models\PaymentHash;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
 use App\PaymentDrivers\AuthorizePaymentDriver;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\Utils\Traits\MakesHash;
 use net\authorize\api\contract\v1\DeleteCustomerPaymentProfileRequest;
 use net\authorize\api\contract\v1\DeleteCustomerProfileRequest;
@@ -30,7 +31,7 @@ use net\authorize\api\controller\DeleteCustomerProfileController;
 /**
  * Class AuthorizeCreditCard.
  */
-class AuthorizeCreditCard
+class AuthorizeCreditCard implements LivewireMethodInterface
 {
     use MakesHash;
 
@@ -41,17 +42,25 @@ class AuthorizeCreditCard
         $this->authorize = $authorize;
     }
 
-    public function processPaymentView($data)
+    public function paymentData(array $data): array
     {
         $tokens = ClientGatewayToken::where('client_id', $this->authorize->client->id)
                                     ->where('company_gateway_id', $this->authorize->company_gateway->id)
                                     ->where('gateway_type_id', GatewayType::CREDIT_CARD)
+                                    ->orderBy('is_default', 'desc')
                                     ->get();
 
         $data['tokens'] = $tokens;
         $data['gateway'] = $this->authorize;
         $data['public_client_id'] = $this->authorize->init()->getPublicClientKey();
         $data['api_login_id'] = $this->authorize->company_gateway->getConfigField('apiLoginId');
+
+        return $data;
+    }
+
+    public function processPaymentView($data)
+    {
+        $data = $this->paymentData($data);
 
         return render('gateways.authorize.credit_card.pay', $data);
     }
@@ -68,19 +77,26 @@ class AuthorizeCreditCard
 
         $gateway_customer_reference = $authorise_create_customer->create($data);
 
-        $authorise_payment_method = new AuthorizePaymentMethod($this->authorize);
-
-        $payment_profile = $authorise_payment_method->addPaymentMethodToClient($gateway_customer_reference, $data);
-        $payment_profile_id = $payment_profile->getPaymentProfile()->getCustomerPaymentProfileId();
-
-        $data = (new ChargePaymentProfile($this->authorize))->chargeCustomerProfile($gateway_customer_reference, $payment_profile_id, $data['amount_with_fee']);
-
         if ($request->has('store_card') && $request->input('store_card') === true) {
+
+            $authorise_payment_method = new AuthorizePaymentMethod($this->authorize);
+
+            $payment_profile = $authorise_payment_method->addPaymentMethodToClient($gateway_customer_reference, $data);
+            $payment_profile_id = $payment_profile->getPaymentProfile()->getCustomerPaymentProfileId();
+
+            $data = (new ChargePaymentProfile($this->authorize))->chargeCustomerProfile($gateway_customer_reference, $payment_profile_id, $data['amount_with_fee']);
+
             $authorise_payment_method->payment_method = GatewayType::CREDIT_CARD;
             $client_gateway_token = $authorise_payment_method->createClientGatewayToken($payment_profile, $gateway_customer_reference);
+
         } else {
-            //remove the payment profile if we are not storing tokens in our system
-            $this->removePaymentProfile($gateway_customer_reference, $payment_profile_id);
+
+            $authorise_transaction = new AuthorizeTransaction($this->authorize);
+            $data = $authorise_transaction->chargeCustomer($gateway_customer_reference, $data);
+
+            $transaction_id = $data['transaction_id'];
+            nlog($transaction_id);
+
         }
 
         return $this->handleResponse($data, $request);
@@ -102,18 +118,18 @@ class AuthorizeCreditCard
         }
 
         // Delete a customer profile
-      // $request = new DeleteCustomerProfileRequest();
-      // $request->setMerchantAuthentication($this->authorize->merchant_authentication);
-      // $request->setCustomerProfileId( $customer_profile_id );
+        // $request = new DeleteCustomerProfileRequest();
+        // $request->setMerchantAuthentication($this->authorize->merchant_authentication);
+        // $request->setCustomerProfileId( $customer_profile_id );
 
-      // $controller = new DeleteCustomerProfileController($request);
-      // $response = $controller->executeWithApiResponse($this->authorize->mode());
-      // if (($response != null) && ($response->getMessages()->getResultCode() == "Ok") )
-      // {
-      //     nlog("SUCCESS: Delete Customer Payment Profile  SUCCESS");
-      // }
-      // else
-      //   nlog("unable to delete profile {$customer_profile_id}");
+        // $controller = new DeleteCustomerProfileController($request);
+        // $response = $controller->executeWithApiResponse($this->authorize->mode());
+        // if (($response != null) && ($response->getMessages()->getResultCode() == "Ok") )
+        // {
+        //     nlog("SUCCESS: Delete Customer Payment Profile  SUCCESS");
+        // }
+        // else
+        //   nlog("unable to delete profile {$customer_profile_id}");
     }
 
     private function processTokenPayment($request)
@@ -304,5 +320,10 @@ class AuthorizeCreditCard
             'description' => $description,
             'invoices' => $vars['invoices'],
         ];
+    }
+
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.authorize.credit_card.pay_livewire';
     }
 }

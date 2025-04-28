@@ -11,144 +11,178 @@
 
 namespace App\Export\CSV;
 
+use App\Export\Decorators\Decorator;
 use App\Libraries\MultiDB;
-use App\Models\Client;
 use App\Models\Company;
 use App\Models\Quote;
 use App\Transformers\QuoteTransformer;
 use App\Utils\Ninja;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\App;
 use League\Csv\Writer;
 
 class QuoteExport extends BaseExport
 {
-    private Company $company;
-
-    protected array $input;
-
     private $quote_transformer;
 
-    protected string $date_key = 'date';
+    public string $date_key = 'date';
 
-    protected array $entity_keys = [
-        'amount' => 'amount',
-        'balance' => 'balance',
-        'client' => 'client_id',
-        'custom_surcharge1' => 'custom_surcharge1',
-        'custom_surcharge2' => 'custom_surcharge2',
-        'custom_surcharge3' => 'custom_surcharge3',
-        'custom_surcharge4' => 'custom_surcharge4',
-        'custom_value1' => 'custom_value1',
-        'custom_value2' => 'custom_value2',
-        'custom_value3' => 'custom_value3',
-        'custom_value4' => 'custom_value4',
-        'date' => 'date',
-        'discount' => 'discount',
-        'due_date' => 'due_date',
-        'exchange_rate' => 'exchange_rate',
-        'footer' => 'footer',
-        'number' => 'number',
-        'paid_to_date' => 'paid_to_date',
-        'partial' => 'partial',
-        'partial_due_date' => 'partial_due_date',
-        'po_number' => 'po_number',
-        'private_notes' => 'private_notes',
-        'public_notes' => 'public_notes',
-        'status' => 'status_id',
-        'tax_name1' => 'tax_name1',
-        'tax_name2' => 'tax_name2',
-        'tax_name3' => 'tax_name3',
-        'tax_rate1' => 'tax_rate1',
-        'tax_rate2' => 'tax_rate2',
-        'tax_rate3' => 'tax_rate3',
-        'terms' => 'terms',
-        'total_taxes' => 'total_taxes',
-        'currency' => 'currency_id',
-        'invoice' => 'invoice_id',
-    ];
+    public Writer $csv;
 
-    private array $decorate_keys = [
-        'client',
-        'currency',
-        'invoice',
-    ];
+    private Decorator $decorator;
 
     public function __construct(Company $company, array $input)
     {
         $this->company = $company;
         $this->input = $input;
         $this->quote_transformer = new QuoteTransformer();
+        $this->decorator = new Decorator();
     }
 
-    public function run()
+    private function init(): Builder
     {
+
         MultiDB::setDb($this->company->db);
         App::forgetInstance('translator');
         App::setLocale($this->company->locale());
         $t = app('translator');
         $t->replace(Ninja::transformTranslations($this->company->settings));
 
-        //load the CSV document from a string
-        $this->csv = Writer::createFromString();
 
         if (count($this->input['report_keys']) == 0) {
-            $this->input['report_keys'] = array_values($this->entity_keys);
+            $this->input['report_keys'] = array_values($this->quote_report_keys);
         }
+
+        $this->input['report_keys'] = array_merge($this->input['report_keys'], array_diff($this->forced_client_fields, $this->input['report_keys']));
+
+        $query = Quote::query()
+                        ->withTrashed()
+                        ->with('client')
+                        ->whereHas('client', function ($q) {
+                            $q->where('is_deleted', false);
+                        })
+                        ->where('company_id', $this->company->id);
+
+        if (!$this->input['include_deleted'] ?? false) {
+            $query->where('is_deleted', 0);
+        }
+
+        $query = $this->addDateRange($query, 'quotes');
+
+        $clients = &$this->input['client_id'];
+
+        if ($clients) {
+            $query = $this->addClientFilter($query, $clients);
+        }
+
+        $query = $this->addQuoteStatusFilter($query, $this->input['status'] ?? '');
+
+        if ($this->input['document_email_attachment'] ?? false) {
+            $this->queueDocuments($query);
+        }
+
+        if ($this->input['pdf_email_attachment'] ?? false) {
+            $this->queuePdfs($query);
+        }
+
+        return $query;
+
+    }
+
+    public function returnJson()
+    {
+        $query = $this->init();
+
+        $headerdisplay = $this->buildHeader();
+
+        $header = collect($this->input['report_keys'])->map(function ($key, $value) use ($headerdisplay) {
+            return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
+        })->toArray();
+
+        $report = $query->cursor()
+                ->map(function ($resource) {
+
+                    /** @var \App\Models\Quote $resource */
+                    $row = $this->buildRow($resource);
+                    return $this->processMetaData($row, $resource);
+                })->toArray();
+
+        return array_merge(['columns' => $header], $report);
+
+
+    }
+
+    public function run()
+    {
+        //load the CSV document from a string
+        $this->csv = Writer::createFromString();
+        \League\Csv\CharsetConverter::addTo($this->csv, 'UTF-8', 'UTF-8');
+
+        $query = $this->init();
 
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query = Quote::query()
-                        ->with('client')
-                        ->where('company_id', $this->company->id)
-                        ->where('is_deleted', 0);
-
-        $query = $this->addDateRange($query);
-
         $query->cursor()
             ->each(function ($quote) {
+
+                /** @var \App\Models\Quote $quote */
                 $this->csv->insertOne($this->buildRow($quote));
             });
 
         return $this->csv->toString();
     }
 
-    private function buildRow(Quote $quote) :array
+    private function buildRow(Quote $quote): array
     {
-        $transformed_quote = $this->quote_transformer->transform($quote);
+        $transformed_invoice = $this->quote_transformer->transform($quote);
 
         $entity = [];
 
         foreach (array_values($this->input['report_keys']) as $key) {
-            $keyval = array_search($key, $this->entity_keys);
 
-            if (array_key_exists($key, $transformed_quote)) {
-                $entity[$keyval] = $transformed_quote[$key];
+            $parts = explode('.', $key);
+
+            if (is_array($parts) && $parts[0] == 'quote' && array_key_exists($parts[1], $transformed_invoice)) {
+                $entity[$key] = $transformed_invoice[$parts[1]];
             } else {
-                $entity[$keyval] = '';
+                $entity[$key] = $this->decorator->transform($key, $quote);
             }
+
         }
 
-        return $this->decorateAdvancedFields($quote, $entity);
+        $entity = $this->decorateAdvancedFields($quote, $entity);
+        return $this->convertFloats($entity);
+
+
     }
 
-    private function decorateAdvancedFields(Quote $quote, array $entity) :array
+    private function decorateAdvancedFields(Quote $quote, array $entity): array
     {
-        if (in_array('currency_id', $this->input['report_keys'])) {
-            $entity['currency'] = $quote->client->currency()->code;
+        if (in_array('quote.currency_id', $this->input['report_keys'])) {
+            $entity['quote.currency'] = $quote->client->currency()->code;
         }
 
-        if (in_array('client_id', $this->input['report_keys'])) {
-            $entity['client'] = $quote->client->present()->name();
+        if (in_array('quote.client_id', $this->input['report_keys'])) {
+            $entity['quote.client'] = $quote->client->present()->name();
         }
 
-        if (in_array('status_id', $this->input['report_keys'])) {
-            $entity['status'] = $quote->stringStatus($quote->status_id);
+        if (in_array('quote.status', $this->input['report_keys'])) {
+            $entity['quote.status'] = $quote->stringStatus($quote->status_id);
         }
 
-        if (in_array('invoice_id', $this->input['report_keys'])) {
-            $entity['invoice'] = $quote->invoice ? $quote->invoice->number : '';
+        if (in_array('quote.invoice_id', $this->input['report_keys'])) {
+            $entity['quote.invoice'] = $quote->invoice ? $quote->invoice->number : '';
         }
+
+        if (in_array('quote.assigned_user_id', $this->input['report_keys'])) {
+            $entity['quote.assigned_user_id'] = $quote->assigned_user ? $quote->assigned_user->present()->name() : '';
+        }
+
+        if (in_array('quote.user_id', $this->input['report_keys'])) {
+            $entity['quote.user_id'] = $quote->user ? $quote->user->present()->name() : '';
+        }
+
 
         return $entity;
     }

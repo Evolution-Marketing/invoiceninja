@@ -4,13 +4,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Invoice;
 
+use App\Models\Company;
 use App\Models\Invoice;
 use CleverIt\UBL\Invoice\Address;
 use CleverIt\UBL\Invoice\Contact;
@@ -34,11 +35,14 @@ use Illuminate\Queue\SerializesModels;
 
 class CreateUbl implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
-    const INVOICE_TYPE_STANDARD = 380;
+    public const INVOICE_TYPE_STANDARD = 380;
 
-    const INVOICE_TYPE_CREDIT = 381;
+    public const INVOICE_TYPE_CREDIT = 381;
 
     public $invoice;
 
@@ -48,10 +52,7 @@ class CreateUbl implements ShouldQueue
     }
 
     /**
-     * Execute the job.
-     *
-     *
-     * @return void
+     * Execute the job
      */
     public function handle()
     {
@@ -63,7 +64,7 @@ class CreateUbl implements ShouldQueue
         // invoice
         $ubl_invoice->setId($invoice->number);
         $ubl_invoice->setIssueDate(date_create($invoice->date));
-        $ubl_invoice->setInvoiceTypeCode($invoice->amount < 0 ? self::INVOICE_TYPE_CREDIT : self::INVOICE_TYPE_STANDARD);
+        $ubl_invoice->setInvoiceTypeCode($invoice->amount < 0 ? (string)self::INVOICE_TYPE_CREDIT : (string)self::INVOICE_TYPE_STANDARD);
 
         $supplier_party = $this->createParty($company, $invoice->user);
         $ubl_invoice->setAccountingSupplierParty($supplier_party);
@@ -102,6 +103,7 @@ class CreateUbl implements ShouldQueue
 
         $ubl_invoice->setLegalMonetaryTotal((new LegalMonetaryTotal())
             //->setLineExtensionAmount()
+            ->setTaxInclusiveAmount($invoice->balance)
             ->setTaxExclusiveAmount($taxable)
             ->setPayableAmount($invoice->balance));
 
@@ -124,7 +126,7 @@ class CreateUbl implements ShouldQueue
 
         if ($company->country_id) {
             $country = new Country();
-            $country->setIdentificationCode($company->country->iso_3166_2);
+            $country->setIdentificationCode(($company instanceof Company) ? $company->country()->iso_3166_2 : $company->country->iso_3166_2);
             $address->setCountry($country);
         }
 
@@ -191,7 +193,7 @@ class CreateUbl implements ShouldQueue
     /**
      * @param $item
      * @param $invoice_total
-     * @return float|int
+     * @return float
      */
     private function getItemTaxable($item, $invoice_total)
     {
@@ -199,6 +201,7 @@ class CreateUbl implements ShouldQueue
 
         if ($this->invoice->discount != 0) {
             if ($this->invoice->is_amount_discount) {
+                /** @var float $invoice_total */
                 if ($invoice_total + $this->invoice->discount != 0) {
                     $total -= $invoice_total ? ($total / ($invoice_total + $this->invoice->discount) * $this->invoice->discount) : 0;
                 }

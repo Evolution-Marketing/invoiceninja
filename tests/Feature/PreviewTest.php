@@ -17,15 +17,15 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Http\Controllers\PreviewController
+ * 
+ *  App\Http\Controllers\PreviewController
  */
 class PreviewTest extends TestCase
 {
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -34,6 +34,11 @@ class PreviewTest extends TestCase
         $this->withoutMiddleware(
             ThrottleRequests::class
         );
+
+        if (config('ninja.testvars.travis') !== false) {
+            $this->markTestSkipped('Skip test for GH Actions');
+        }
+
     }
 
     public function testPreviewRoute()

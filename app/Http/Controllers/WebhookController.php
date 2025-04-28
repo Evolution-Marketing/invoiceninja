@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -17,15 +17,17 @@ use App\Filters\WebhookFilters;
 use App\Http\Requests\Webhook\CreateWebhookRequest;
 use App\Http\Requests\Webhook\DestroyWebhookRequest;
 use App\Http\Requests\Webhook\EditWebhookRequest;
+use App\Http\Requests\Webhook\RetryWebhookRequest;
 use App\Http\Requests\Webhook\ShowWebhookRequest;
 use App\Http\Requests\Webhook\StoreWebhookRequest;
 use App\Http\Requests\Webhook\UpdateWebhookRequest;
+use App\Jobs\Util\WebhookSingle;
 use App\Models\Webhook;
 use App\Repositories\BaseRepository;
 use App\Transformers\WebhookTransformer;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 
 class WebhookController extends BaseController
 {
@@ -53,8 +55,7 @@ class WebhookController extends BaseController
      *      description="Lists Webhooks, search and filters allow fine grained lists to be generated.
      *
      *      Query parameters can be added to performed more fine grained filtering of the Webhooks, these are handled by the WebhookFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -78,7 +79,7 @@ class WebhookController extends BaseController
      *       ),
      *     )
      * @param WebhookFilters $filters
-     * @return Response|mixed
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function index(WebhookFilters $filters)
     {
@@ -92,7 +93,7 @@ class WebhookController extends BaseController
      *
      * @param ShowWebhookRequest $request
      * @param Webhook $webhook
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -101,8 +102,7 @@ class WebhookController extends BaseController
      *      tags={"webhooks"},
      *      summary="Shows a Webhook",
      *      description="Displays a Webhook by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -147,7 +147,7 @@ class WebhookController extends BaseController
      *
      * @param EditWebhookRequest $request
      * @param Webhook $webhook
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -156,8 +156,7 @@ class WebhookController extends BaseController
      *      tags={"webhooks"},
      *      summary="Shows a Webhook for editting",
      *      description="Displays a Webhook by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -202,7 +201,7 @@ class WebhookController extends BaseController
      *
      * @param UpdateWebhookRequest $request
      * @param Webhook $webhook
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -212,8 +211,7 @@ class WebhookController extends BaseController
      *      tags={"webhooks"},
      *      summary="Updates a Webhook",
      *      description="Handles the updating of a Webhook by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -264,7 +262,7 @@ class WebhookController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateWebhookRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -274,8 +272,7 @@ class WebhookController extends BaseController
      *      tags={"webhooks"},
      *      summary="Gets a new blank Webhook object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -301,7 +298,10 @@ class WebhookController extends BaseController
      */
     public function create(CreateWebhookRequest $request)
     {
-        $webhook = WebhookFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $webhook = WebhookFactory::create($user->company()->id, $user->id);
         $webhook->fill($request->all());
         $webhook->save();
 
@@ -312,7 +312,7 @@ class WebhookController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreWebhookRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -322,8 +322,7 @@ class WebhookController extends BaseController
      *      tags={"webhooks"},
      *      summary="Adds a Webhook",
      *      description="Adds an Webhook to a company",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -356,8 +355,11 @@ class WebhookController extends BaseController
             return response()->json('Invalid event', 400);
         }
 
-        $webhook = new Webhook;
-        $webhook->company_id = auth()->user()->company()->id;
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $webhook = new Webhook();
+        $webhook->company_id = $user->company()->id;
         $webhook->user_id = auth()->user()->id;
         $webhook->event_id = $event_id;
         $webhook->target_url = $target_url;
@@ -376,7 +378,7 @@ class WebhookController extends BaseController
      *
      * @param DestroyWebhookRequest $request
      * @param Webhook $webhook
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -386,8 +388,7 @@ class WebhookController extends BaseController
      *      tags={"Webhooks"},
      *      summary="Deletes a Webhook",
      *      description="Handles the deletion of a Webhook by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -432,7 +433,7 @@ class WebhookController extends BaseController
     /**
      * Perform bulk actions on the list view.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Post(
@@ -441,8 +442,7 @@ class WebhookController extends BaseController
      *      tags={"webhooks"},
      *      summary="Performs bulk actions on an array of Webhooks",
      *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
      *      @OA\RequestBody(
@@ -489,11 +489,43 @@ class WebhookController extends BaseController
         $webhooks = Webhook::withTrashed()->find($this->transformKeys($ids));
 
         $webhooks->each(function ($webhook, $key) use ($action) {
-            if (auth()->user()->can('edit', $webhook)) {
+            /** @var \App\Models\User $user */
+            $user = auth()->user();
+
+            if ($user->can('edit', $webhook)) {
                 $this->base_repo->{$action}($webhook);
             }
         });
 
         return $this->listResponse(Webhook::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+    }
+
+    public function retry(RetryWebhookRequest $request, Webhook $webhook)
+    {
+        $includes = '';
+
+        match ($request->entity) {
+            'invoice' => $includes = 'client',
+            'payment' => $includes = 'invoices,client',
+            'project' => $includes = 'client',
+            'purchase_order' => $includes = 'vendor',
+            'quote' => $includes = 'client',
+            default => $includes = ''
+        };
+
+        $class = 'App\Models\\'.ucfirst(Str::camel($request->entity));
+
+        $entity = $class::query()->withTrashed()->where('id', $this->decodePrimaryKey($request->entity_id))->company()->first();
+
+        if (!$entity) {
+            return response()->json(['message' => ctrans('texts.record_not_found')], 400);
+        }
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        WebhookSingle::dispatchSync($webhook->id, $entity, $user->company()->db, $includes);
+
+        return $this->itemResponse($webhook);
     }
 }

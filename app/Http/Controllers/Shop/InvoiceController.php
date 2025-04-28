@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -53,10 +53,11 @@ class InvoiceController extends BaseController
 
     public function show(Request $request, string $invitation_key)
     {
+        /** @var \App\Models\Company $company */
         $company = Company::where('company_key', $request->header('X-API-COMPANY-KEY'))->first();
 
         if (! $company->enable_shop_api) {
-            return response()->json(['message' => 'Shop is disabled', 'errors' => new stdClass], 403);
+            return response()->json(['message' => 'Shop is disabled', 'errors' => new stdClass()], 403);
         }
 
         $invitation = InvoiceInvitation::with(['invoice'])
@@ -69,10 +70,11 @@ class InvoiceController extends BaseController
 
     public function store(StoreShopInvoiceRequest $request)
     {
+        /** @var \App\Models\Company $company */
         $company = Company::where('company_key', $request->header('X-API-COMPANY-KEY'))->first();
 
         if (! $company->enable_shop_api) {
-            return response()->json(['message' => 'Shop is disabled', 'errors' => new stdClass], 403);
+            return response()->json(['message' => 'Shop is disabled', 'errors' => new stdClass()], 403);
         }
 
         app('queue')->createPayloadUsing(function () use ($company) {

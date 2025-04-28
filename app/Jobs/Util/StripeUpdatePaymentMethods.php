@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,7 +22,10 @@ use Illuminate\Queue\SerializesModels;
 
 class StripeUpdatePaymentMethods implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $company;
 
@@ -42,18 +45,18 @@ class StripeUpdatePaymentMethods implements ShouldQueue
     /**
      * Execute the job.
      *
-     * @return bool
      */
     public function handle()
     {
         MultiDB::setDb($this->company->db);
 
-        $cgs = CompanyGateway::where('company_id', $this->company->id)
+        $cgs = CompanyGateway::query()
+                            ->where('company_id', $this->company->id)
                             ->whereIn('gateway_key', $this->stripe_keys)
                             ->get();
 
         $cgs->each(function ($company_gateway) {
-            $company_gateway->driver(new Client)->updateAllPaymentMethods();
+            $company_gateway->driver(new Client())->updateAllPaymentMethods();
         });
     }
 

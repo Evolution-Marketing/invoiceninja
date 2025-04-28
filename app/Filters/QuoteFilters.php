@@ -4,14 +4,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Filters;
 
-use App\Models\User;
+use App\Models\Quote;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -22,102 +22,164 @@ class QuoteFilters extends QueryFilters
     /**
      * Filter based on search text.
      *
-     * @param string query filter
+     * @param string $filter
      * @return Builder
      * @deprecated
      */
-    public function filter(string $filter = '') : Builder
+    public function filter(string $filter = ''): Builder
     {
         if (strlen($filter) == 0) {
             return $this->builder;
         }
 
         return  $this->builder->where(function ($query) use ($filter) {
-            $query->where('quotes.custom_value1', 'like', '%'.$filter.'%')
-                          ->orWhere('quotes.custom_value2', 'like', '%'.$filter.'%')
-                          ->orWhere('quotes.custom_value3', 'like', '%'.$filter.'%')
-                          ->orWhere('quotes.custom_value4', 'like', '%'.$filter.'%');
+            $query->where('number', 'like', '%'.$filter.'%')
+                  ->orwhere('custom_value1', 'like', '%'.$filter.'%')
+                  ->orWhere('custom_value2', 'like', '%'.$filter.'%')
+                  ->orWhere('custom_value3', 'like', '%'.$filter.'%')
+                  ->orWhere('custom_value4', 'like', '%'.$filter.'%')
+                  ->orWhereHas('client', function ($q) use ($filter) {
+                      $q->where('name', 'like', '%'.$filter.'%');
+                  })
+                  ->orWhereHas('client.contacts', function ($q) use ($filter) {
+                      $q->where('first_name', 'like', '%'.$filter.'%')
+                        ->orWhere('last_name', 'like', '%'.$filter.'%')
+                        ->orWhere('email', 'like', '%'.$filter.'%');
+                  })
+                                            ->orWhereRaw("
+                            JSON_UNQUOTE(JSON_EXTRACT(
+                                JSON_ARRAY(
+                                    JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[*].notes')), 
+                                    JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[*].product_key'))
+                                ), '$[*]')
+                            ) LIKE ?", ['%'.$filter.'%']);
+            //   ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[*].notes')) LIKE ?", ['%'.$filter.'%']);
         });
     }
 
     /**
-     * Filters the list based on the status
-     * archived, active, deleted.
+     * Filter based on client status.
      *
-     * @param string filter
+     * Statuses we need to handle
+     * - all
+     * - active
+     * - paused
+     * - completed
+     *
+     * @param string $value The invoice status as seen by the client
      * @return Builder
      */
-    public function status(string $filter = '') : Builder
+    public function client_status(string $value = ''): Builder
     {
-        if (strlen($filter) == 0) {
+        if (strlen($value) == 0) {
             return $this->builder;
         }
 
-        $table = 'quotes';
-        $filters = explode(',', $filter);
+        $status_parameters = explode(',', $value);
 
-        return $this->builder->where(function ($query) use ($filters, $table) {
-            $query->whereNull($table.'.id');
+        if (in_array('all', $status_parameters)) {
+            return $this->builder;
+        }
 
-            if (in_array(parent::STATUS_ACTIVE, $filters)) {
-                $query->orWhereNull($table.'.deleted_at');
-            }
-
-            if (in_array(parent::STATUS_ARCHIVED, $filters)) {
-                $query->orWhere(function ($query) use ($table) {
-                    $query->whereNotNull($table.'.deleted_at');
-
-                    if (! in_array($table, ['users'])) {
-                        $query->where($table.'.is_deleted', '=', 0);
-                    }
+        $this->builder->where(function ($query) use ($status_parameters) {
+            if (in_array('sent', $status_parameters)) {
+                $query->orWhere(function ($q) {
+                    $q->where('status_id', Quote::STATUS_SENT)
+                    ->whereNull('due_date')
+                    ->orWhere('due_date', '>=', now()->toDateString());
                 });
             }
 
-            if (in_array(parent::STATUS_DELETED, $filters)) {
-                $query->orWhere($table.'.is_deleted', '=', 1);
+            $quote_filters = [];
+
+            if (in_array('draft', $status_parameters)) {
+                $quote_filters[] = Quote::STATUS_DRAFT;
+            }
+
+
+            if (in_array('approved', $status_parameters)) {
+                $quote_filters[] = Quote::STATUS_APPROVED;
+            }
+
+            if (count($quote_filters) > 0) {
+                $query->orWhereIn('status_id', $quote_filters);
+            }
+
+            if (in_array('expired', $status_parameters)) {
+                $query->orWhere(function ($q) {
+                    $q->where('status_id', Quote::STATUS_SENT)
+                    ->whereNotNull('due_date')
+                    ->where('due_date', '<=', now()->toDateString());
+                });
+            }
+
+            if (in_array('upcoming', $status_parameters)) {
+                $query->orWhere(function ($q) {
+                    $q->where('status_id', Quote::STATUS_SENT)
+                      ->where('due_date', '>=', now()->toDateString())
+                      ->orderBy('due_date', 'DESC');
+                });
+            }
+
+            if (in_array('converted', $status_parameters)) {
+                $query->orWhere(function ($q) {
+                    $q->whereNotNull('invoice_id');
+                });
             }
         });
+
+        return $this->builder;
     }
 
-    public function number($number = '')
+    public function number($number = ''): Builder
     {
-        return $this->builder->where('number', 'like', '%'.$number.'%');
+        if (strlen($number) == 0) {
+            return $this->builder;
+        }
+
+        return $this->builder->where('number', $number);
     }
 
     /**
      * Sorts the list based on $sort.
      *
-     * @param string sort formatted as column|asc
+     * @param string $sort formatted as column|asc
      * @return Builder
      */
-    public function sort(string $sort) : Builder
+    public function sort(string $sort = ''): Builder
     {
         $sort_col = explode('|', $sort);
 
-        if($sort_col[0] == 'valid_until')
+        if (!is_array($sort_col) || count($sort_col) != 2 || !in_array($sort_col[0], \Illuminate\Support\Facades\Schema::getColumnListing($this->builder->getModel()->getTable()))) {
+            return $this->builder;
+        }
+
+        $dir = ($sort_col[1] == 'asc') ? 'asc' : 'desc';
+
+        if ($sort_col[0] == 'client_id') {
+
+            return $this->builder->orderBy(\App\Models\Client::select('name')
+                    ->whereColumn('clients.id', 'quotes.client_id'), $dir);
+
+        }
+
+        if ($sort_col[0] == 'number') {
+            return $this->builder->orderByRaw("REGEXP_REPLACE(number,'[^0-9]+','')+0 " . $dir);
+        }
+
+        if ($sort_col[0] == 'valid_until') {
             $sort_col[0] = 'due_date';
+        }
 
-        return $this->builder->orderBy($sort_col[0], $sort_col[1]);
-    }
-
-    /**
-     * Returns the base query.
-     *
-     * @param int company_id
-     * @param User $user
-     * @return Builder
-     * @deprecated
-     */
-    public function baseQuery(int $company_id, User $user) : Builder
-    {
+        return $this->builder->orderBy($sort_col[0], $dir);
     }
 
     /**
      * Filters the query by the users company ID.
      *
-     * @return Illuminate\Database\Query\Builder
+     * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function entityFilter()
+    public function entityFilter(): Builder
     {
         return $this->builder->company();
     }

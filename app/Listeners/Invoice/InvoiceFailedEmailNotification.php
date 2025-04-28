@@ -4,27 +4,24 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Listeners\Invoice;
 
+use App\Libraries\MultiDB;
 use App\Jobs\Mail\NinjaMailer;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
-use App\Libraries\MultiDB;
+use Illuminate\Support\Facades\Cache;
 use App\Mail\Admin\EntityFailedSendObject;
-use App\Notifications\Admin\EntitySentNotification;
 use App\Utils\Traits\Notifications\UserNotifies;
-use Illuminate\Contracts\Queue\ShouldQueue;
 
 class InvoiceFailedEmailNotification
 {
     use UserNotifies;
-
-    public $delay = 5;
 
     public function __construct()
     {
@@ -40,30 +37,33 @@ class InvoiceFailedEmailNotification
     {
         MultiDB::setDb($event->company->db);
 
-        $first_notification_sent = true;
+        if (Cache::has("invoice_failed_email_notification_{$event->invitation->key}")) {
+            return;
+        }
 
         $invoice = $event->invitation->invoice;
-        $invoice->update(['last_sent_date' => now()]);
-
-        $nmo = new NinjaMailerObject;
-        $nmo->mailable = new NinjaMailer((new EntityFailedSendObject($event->invitation, 'invoice', $event->template, $event->message))->build());
-        $nmo->company = $invoice->company;
-        $nmo->settings = $invoice->company->settings;
 
         foreach ($event->invitation->company->company_users as $company_user) {
             $user = $company_user->user;
 
-            $methods = $this->findUserNotificationTypes($event->invitation, $company_user, 'invoice', ['all_notifications', 'invoice_sent', 'invoice_sent_all']);
+            $methods = $this->findUserNotificationTypes($event->invitation, $company_user, 'invoice', ['all_notifications', 'invoice_sent', 'invoice_sent_all', 'invoice_sent_user']);
 
             if (($key = array_search('mail', $methods)) !== false) {
                 unset($methods[$key]);
 
+                $nmo = new NinjaMailerObject();
+                $nmo->mailable = new NinjaMailer((new EntityFailedSendObject($event->invitation->withoutRelations(), 'invoice', $event->template, $event->message, $company_user->portalType()))->build());
+                $nmo->company = $invoice->company->withoutRelations();
+                $nmo->settings = $invoice->company->settings;
                 $nmo->to_user = $user;
 
-                NinjaMailerJob::dispatch($nmo);
+                (new NinjaMailerJob($nmo))->handle();
 
-                $first_notification_sent = false;
+                $nmo = null;
+
             }
         }
+
+        Cache::put("invoice_failed_email_notification_{$event->invitation->key}", true, 60 * 60);
     }
 }

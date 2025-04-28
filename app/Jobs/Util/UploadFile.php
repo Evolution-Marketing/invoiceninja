@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -24,13 +24,17 @@ use Intervention\Image\ImageManager;
 
 class UploadFile implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, MakesHash;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use MakesHash;
 
-    const IMAGE = 1;
+    public const IMAGE = 1;
 
-    const DOCUMENT = 2;
+    public const DOCUMENT = 2;
 
-    const PROPERTIES = [
+    public const PROPERTIES = [
         self::IMAGE => [
             'path' => 'images',
         ],
@@ -51,7 +55,9 @@ class UploadFile implements ShouldQueue
 
     public $entity;
 
-    public function __construct($file, $type, $user, $company, $entity, $disk = null, $is_public = false)
+    public $disk;
+
+    public function __construct($file, $type, $user, $company, $entity, $disk = null, $is_public = true)
     {
         $this->file = $file;
         $this->type = $type;
@@ -69,7 +75,7 @@ class UploadFile implements ShouldQueue
      *
      * @return Document|null
      */
-    public function handle() : ?Document
+    public function handle(): ?Document
     {
         if (is_array($this->file)) { //return early if the payload is just JSON
             return null;
@@ -98,7 +104,7 @@ class UploadFile implements ShouldQueue
         $document->user_id = $this->user->id;
         $document->company_id = $this->company->id;
         $document->url = $instance;
-        $document->name = $this->file->getClientOriginalName();
+        $document->name = str_replace("/", "-", $this->file->getClientOriginalName());
         $document->type = $this->file->extension();
         $document->disk = $this->disk;
         $document->hash = $this->file->hashName();
@@ -115,7 +121,7 @@ class UploadFile implements ShouldQueue
         return $document;
     }
 
-    private function generatePreview($preview_path) : string
+    private function generatePreview($preview_path): string
     {
         $extension = $this->file->getClientOriginalExtension();
 
@@ -167,7 +173,7 @@ class UploadFile implements ShouldQueue
                     $previewHeight = $height * Document::DOCUMENT_PREVIEW_SIZE / $width;
                 } else {
                     $previewHeight = Document::DOCUMENT_PREVIEW_SIZE;
-                    $previewWidth = $width * DOCUMENT_PREVIEW_SIZE / $height;
+                    $previewWidth = $width * Document::DOCUMENT_PREVIEW_SIZE / $height;
                 }
 
                 $img->resize($previewWidth, $previewHeight);
@@ -181,5 +187,10 @@ class UploadFile implements ShouldQueue
         }
 
         return $preview;
+    }
+
+    public function failed(\Throwable $exception)
+    {
+        nlog('UploadFile failed: ' . $exception->getMessage());
     }
 }

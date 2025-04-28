@@ -4,17 +4,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Utils\Traits;
 
-use App\Models\Country;
-use App\Models\Credit;
 use App\Models\Invoice;
-use App\Models\Quote;
 use App\Utils\Helpers;
 use App\Utils\Number;
 use Carbon\Carbon;
@@ -22,6 +19,8 @@ use Illuminate\Support\Str;
 
 /**
  * Class MakesInvoiceValues.
+ * 
+ * Quite possibly this is now @deprecated 2025-02-04
  */
 trait MakesInvoiceValues
 {
@@ -84,7 +83,7 @@ trait MakesInvoiceValues
         return '';
     }
 
-    public function makeLabels($contact = null) :array
+    public function makeLabels($contact = null): array
     {
         $data = [];
 
@@ -105,7 +104,7 @@ trait MakesInvoiceValues
      * @return array returns an array
      * of keyed labels (appended with _label)
      */
-    public function makeValues($contact = null) :array
+    public function makeValues($contact = null): array
     {
         $data = [];
 
@@ -123,7 +122,7 @@ trait MakesInvoiceValues
      * @param  array $columns The array (or string of column headers)
      * @return string  injectable HTML string
      */
-    public function buildTableHeader($columns) :?string
+    public function buildTableHeader($columns): ?string
     {
         $data = $this->makeLabels();
 
@@ -147,7 +146,7 @@ trait MakesInvoiceValues
      * @param string $table_prefix
      * @return string  injectable HTML string
      */
-    public function buildTableBody(array $default_columns, $user_columns, string $table_prefix) :?string
+    public function buildTableBody(array $default_columns, $user_columns, string $table_prefix): ?string
     {
         $items = $this->transformLineItems($this->line_items, $table_prefix);
 
@@ -161,8 +160,6 @@ trait MakesInvoiceValues
 
         if (strlen($user_columns) > 1) {
             foreach ($items as $key => $item) {
-//                $tmp = str_replace(array_keys($data), array_values($data), $user_columns);
-//                $tmp = str_replace(array_keys($item), array_values($item), $tmp);
                 $tmp = strtr($user_columns, $data);
                 $tmp = strtr($tmp, $item);
 
@@ -178,8 +175,6 @@ trait MakesInvoiceValues
             $table_row .= '</tr>';
 
             foreach ($items as $key => $item) {
-                // $tmp = str_replace(array_keys($item), array_values($item), $table_row);
-                // $tmp = str_replace(array_keys($data), array_values($data), $tmp);
                 $tmp = strtr($table_row, $item);
                 $tmp = strtr($tmp, $data);
 
@@ -196,7 +191,7 @@ trait MakesInvoiceValues
      * @param  array  $columns The column header values
      * @return array          The new column header variables
      */
-    private function transformColumnsForHeader(array $columns) :array
+    private function transformColumnsForHeader(array $columns): array
     {
         if (count($columns) == 0) {
             return [];
@@ -210,8 +205,10 @@ trait MakesInvoiceValues
                 'tax_name1',
                 'tax_name2',
                 'tax_name3',
+                'tax_amount',
             ],
             [
+                'tax',
                 'tax',
                 'tax',
                 'tax',
@@ -226,7 +223,7 @@ trait MakesInvoiceValues
      * @param  array  $columns The column header values
      * @return array          The invoice variables
      */
-    private function transformColumnsForLineItems(array $columns) :array
+    private function transformColumnsForLineItems(array $columns): array
     {
         /* Removes any invalid columns the user has entered. */
         $columns = array_intersect($columns, self::$master_columns);
@@ -263,10 +260,9 @@ trait MakesInvoiceValues
      *
      * @return array
      */
-    public function transformLineItems($items, $table_type = '$product') :array
+    public function transformLineItems($items, $table_type = '$product'): array
     {   //$start = microtime(true);
-
-        $entity = $this->client ? $this->client : $this->company;
+        $entity = $this->client ? $this->client : $this->vendor;
 
         $data = [];
 
@@ -284,10 +280,8 @@ trait MakesInvoiceValues
                 }
             }
 
-            if ($table_type == '$task' && $item->type_id != 2) {
-                // if ($item->type_id != 4 && $item->type_id != 5) {
-                    continue;
-                // }
+            if (($table_type == '$task' && $item->type_id != 2)) {
+                continue;
             }
 
             $helpers = new Helpers();
@@ -297,16 +291,21 @@ trait MakesInvoiceValues
             $data[$key][$table_type.'.item'] = is_null(optional($item)->item) ? $item->product_key : $item->item;
             $data[$key][$table_type.'.service'] = is_null(optional($item)->service) ? $item->product_key : $item->service;
 
-            $data[$key][$table_type.'.notes'] = Helpers::processReservedKeywords($item->notes, $entity);
-            $data[$key][$table_type.'.description'] = Helpers::processReservedKeywords($item->notes, $entity);
+            $currentDateTime = null;
+            if (isset($this->entity->next_send_date)) {
+                $currentDateTime = Carbon::parse($this->entity->next_send_date);
+            }
 
-            $data[$key][$table_type.".{$_table_type}1"] = strlen($item->custom_value1) > 1 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}1", $item->custom_value1, $entity) : '';
-            $data[$key][$table_type.".{$_table_type}2"] = strlen($item->custom_value2) > 2 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}2", $item->custom_value2, $entity) : '';
-            $data[$key][$table_type.".{$_table_type}3"] = strlen($item->custom_value3) > 3 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}3", $item->custom_value3, $entity) : '';
-            $data[$key][$table_type.".{$_table_type}4"] = strlen($item->custom_value4) > 4 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}4", $item->custom_value4, $entity) : '';
+            $data[$key][$table_type.'.notes'] = Helpers::processReservedKeywords($item->notes, $entity, $currentDateTime);
+            $data[$key][$table_type.'.description'] = Helpers::processReservedKeywords($item->notes, $entity, $currentDateTime);
+
+            $data[$key][$table_type.".{$_table_type}1"] = strlen($item->custom_value1) >= 1 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}1", $item->custom_value1, $entity) : '';
+            $data[$key][$table_type.".{$_table_type}2"] = strlen($item->custom_value2) >= 1 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}2", $item->custom_value2, $entity) : '';
+            $data[$key][$table_type.".{$_table_type}3"] = strlen($item->custom_value3) >= 1 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}3", $item->custom_value3, $entity) : '';
+            $data[$key][$table_type.".{$_table_type}4"] = strlen($item->custom_value4) >= 1 ? $helpers->formatCustomFieldValue($this->company->custom_fields, "{$_table_type}4", $item->custom_value4, $entity) : '';
 
             if ($item->quantity > 0 || $item->cost > 0) {
-                $data[$key][$table_type.'.quantity'] = Number::formatValueNoTrailingZeroes($item->quantity, $entity_currency);
+                $data[$key][$table_type.'.quantity'] = Number::formatValueNoTrailingZeroes($item->quantity, $entity);
 
                 $data[$key][$table_type.'.unit_cost'] = Number::formatMoneyNoRounding($item->cost, $entity);
 
@@ -327,6 +326,12 @@ trait MakesInvoiceValues
                 $data[$key][$table_type.'.gross_line_total'] = ($item->gross_line_total == 0) ? '' : Number::formatMoney($item->gross_line_total, $entity);
             } else {
                 $data[$key][$table_type.'.gross_line_total'] = '';
+            }
+
+            if (property_exists($item, 'tax_amount')) {
+                $data[$key][$table_type.'.tax_amount'] = ($item->tax_amount == 0) ? '' : Number::formatMoney($item->tax_amount, $entity);
+            } else {
+                $data[$key][$table_type.'.tax_amount'] = '';
             }
 
             if (isset($item->discount) && $item->discount > 0) {
@@ -361,7 +366,7 @@ trait MakesInvoiceValues
         }
 
         //nlog(microtime(true) - $start);
-        
+
         return $data;
     }
 
@@ -374,10 +379,10 @@ trait MakesInvoiceValues
      * @return string a collection of <tr> rows with line item
      * aggregate data
      */
-    private function makeLineTaxes() :string
+    private function makeLineTaxes(): string
     {
         $tax_map = $this->calc()->getTaxMap();
-        $entity = $this->client ? $this->client : $this->company;
+        $entity = $this->client ? $this->client : $this->vendor;
 
         $data = '';
 
@@ -394,10 +399,10 @@ trait MakesInvoiceValues
      * @return string a collectino of <tr> with
      * itemised total tax data
      */
-    private function makeTotalTaxes() :string
+    private function makeTotalTaxes(): string
     {
         $data = '';
-        $entity = $this->client ? $this->client : $this->company;
+        $entity = $this->client ? $this->client : $this->vendor;
 
         if (! $this->calc()->getTotalTaxMap()) {
             return $data;
@@ -412,7 +417,7 @@ trait MakesInvoiceValues
         return $data;
     }
 
-    private function totalTaxLabels() :string
+    private function totalTaxLabels(): string
     {
         $data = '';
 
@@ -427,10 +432,10 @@ trait MakesInvoiceValues
         return $data;
     }
 
-    private function totalTaxValues() :string
+    private function totalTaxValues(): string
     {
         $data = '';
-        $entity = $this->client ? $this->client : $this->company;
+        $entity = $this->client ? $this->client : $this->vendor;
 
         if (! $this->calc()->getTotalTaxMap()) {
             return $data;
@@ -443,7 +448,7 @@ trait MakesInvoiceValues
         return $data;
     }
 
-    private function lineTaxLabels() :string
+    private function lineTaxLabels(): string
     {
         $tax_map = $this->calc()->getTaxMap();
 
@@ -456,10 +461,10 @@ trait MakesInvoiceValues
         return $data;
     }
 
-    private function lineTaxValues() :string
+    private function lineTaxValues(): string
     {
         $tax_map = $this->calc()->getTaxMap();
-        $entity = $this->client ? $this->client : $this->company;
+        $entity = $this->client ? $this->client : $this->vendor;
 
         $data = '';
 
@@ -484,7 +489,7 @@ trait MakesInvoiceValues
      * of Repeating headers and footers on the PDF.
      * @return string The css string
      */
-    public function generateCustomCSS() :string
+    public function generateCustomCSS(): string
     {
         $settings = $this->client ? $this->client->getMergedSettings() : $this->company->settings;
 
@@ -573,7 +578,7 @@ html {
         ';
 
         $css .= 'font-size:'.$settings->font_size.'px;';
-//        $css .= 'font-size:14px;';
+        //        $css .= 'font-size:14px;';
 
         $css .= '}';
 

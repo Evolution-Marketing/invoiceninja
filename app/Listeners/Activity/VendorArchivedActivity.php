@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -43,9 +43,9 @@ class VendorArchivedActivity implements ShouldQueue
 
         $vendor = $event->vendor;
 
-        $fields = new stdClass;
+        $fields = new stdClass();
 
-        $user_id = array_key_exists('user_id', $event->event_vars) ? $event->event_vars['user_id'] : $event->vendor->user_id;
+        $user_id = isset($event->event_vars['user_id']) ? $event->event_vars['user_id'] : $event->vendor->user_id;
 
         $fields->vendor_id = $vendor->id;
         $fields->user_id = $user_id;

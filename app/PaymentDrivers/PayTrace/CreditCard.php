@@ -5,30 +5,26 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers\PayTrace;
 
-use App\Exceptions\PaymentFailed;
-use App\Jobs\Util\SystemLogger;
 use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\PaymentHash;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
-use App\PaymentDrivers\PayFastPaymentDriver;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\PaytracePaymentDriver;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
-class CreditCard
+class CreditCard implements LivewireMethodInterface
 {
     use MakesHash;
 
@@ -41,8 +37,7 @@ class CreditCard
 
     public function authorizeView($data)
     {
-        $data['client_key'] = $this->paytrace->getAuthToken();
-        $data['gateway'] = $this->paytrace;
+        $data = $this->paymentData($data);
 
         return render('gateways.paytrace.authorize', $data);
     }
@@ -64,6 +59,9 @@ class CreditCard
             'enc_key' => $data['enc_key'],
             'integrator_id' =>  $this->paytrace->company_gateway->getConfigField('integratorId'),
             'billing_address' => $this->buildBillingAddress(),
+            'email' => $this->paytrace->client->present()->email(),
+            'phone' => $this->paytrace->client->present()->phone(),
+
         ];
 
         $response = $this->paytrace->gatewayRequest('/v1/customer/pt_protect_create', $post_data);
@@ -87,13 +85,16 @@ class CreditCard
             return $this->paytrace->processUnsuccessfulTransaction($data);
         }
 
+        nlog("paytrace response createCustomer");
+        nlog($response);
+
         $cgt = [];
         $cgt['token'] = $response->customer_id;
         $cgt['payment_method_id'] = GatewayType::CREDIT_CARD;
 
         $profile = $this->getCustomerProfile($response->customer_id);
 
-        $payment_meta = new \stdClass;
+        $payment_meta = new \stdClass();
         $payment_meta->exp_month = $profile->credit_card->expiration_month;
         $payment_meta->exp_year = $profile->credit_card->expiration_year;
         $payment_meta->brand = 'CC';
@@ -125,6 +126,7 @@ class CreditCard
             'city' => $this->paytrace->client->city,
             'state' => $this->paytrace->client->state,
             'zip' => $this->paytrace->client->postal_code,
+            'country' => $this->paytrace->client->country->iso_3166_2
         ];
 
         return $data;
@@ -179,12 +181,13 @@ class CreditCard
             'customer_id' => $token,
             'integrator_id' =>  $this->paytrace->company_gateway->getConfigField('integratorId'),
             'amount' => $request->input('amount_with_fee'),
+            'invoice_id' => $this->harvestInvoiceId(),
         ];
 
         $response = $this->paytrace->gatewayRequest('/v1/transactions/sale/by_customer', $data);
 
-        if ($response->success) {
-            $this->paytrace->logSuccessfulGatewayResponse(['response' => $response, 'data' => $this->paytrace->payment_hash], SystemLog::TYPE_PAYTRACE);
+        if ($response->success ?? false) {
+            $this->paytrace->logSuccessfulGatewayResponse(['response' => $response, 'data' => $this->paytrace->payment_hash->data], SystemLog::TYPE_PAYTRACE);
 
             return $this->processSuccessfulPayment($response);
         }
@@ -236,5 +239,24 @@ class CreditCard
         ];
 
         return $this->paytrace->processUnsuccessfulTransaction($data);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.paytrace.pay_livewire';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $data['client_key'] = $this->paytrace->getAuthToken();
+        $data['gateway'] = $this->paytrace;
+
+        return $data;
     }
 }

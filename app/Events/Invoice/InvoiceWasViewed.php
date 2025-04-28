@@ -4,32 +4,30 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Events\Invoice;
 
+use App\Models\BaseModel;
 use App\Models\Company;
 use App\Models\InvoiceInvitation;
+use App\Utils\Traits\Invoice\Broadcasting\DefaultResourceBroadcast;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Queue\SerializesModels;
+use League\Fractal\Manager;
 
 /**
  * Class InvoiceWasViewed.
  */
-class InvoiceWasViewed
+class InvoiceWasViewed implements ShouldBroadcast
 {
     use SerializesModels;
-
-    /**
-     * @var Invoice
-     */
-    public $invitation;
-
-    public $company;
-
-    public $event_vars;
+    use InteractsWithSockets;
+    use DefaultResourceBroadcast;
 
     /**
      * Create a new event instance.
@@ -38,10 +36,27 @@ class InvoiceWasViewed
      * @param Company $company
      * @param array $event_vars
      */
-    public function __construct(InvoiceInvitation $invitation, Company $company, array $event_vars)
+    public function __construct(public InvoiceInvitation $invitation, public Company $company, public array $event_vars)
     {
-        $this->invitation = $invitation;
-        $this->company = $company;
-        $this->event_vars = $event_vars;
+        //
+    }
+
+    public function broadcastModel(): BaseModel
+    {
+        return $this->invitation->invoice;
+    }
+
+    public function broadcastManager(Manager $manager): Manager
+    {
+        $manager->parseIncludes('client');
+
+        return $manager;
+    }
+
+    public function broadcastIncludes(): array
+    {
+        return [
+            'client',
+        ];
     }
 }

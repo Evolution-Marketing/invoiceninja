@@ -16,14 +16,14 @@ use App\Models\Quote;
 
 class CloneQuoteToProjectFactory
 {
-    public static function create(Quote $quote, $user_id) : ?Project
+    public static function create(Quote $quote, $user_id): ?Project
     {
         $project = new Project();
 
         $project->company_id = $quote->company_id;
         $project->user_id = $user_id;
         $project->client_id = $quote->client_id;
-        
+
         $project->public_notes = $quote->public_notes;
         $project->private_notes = $quote->private_notes;
         $project->budgeted_hours = 0;
@@ -33,7 +33,7 @@ class CloneQuoteToProjectFactory
         $project->custom_value2 = '';
         $project->custom_value3 = '';
         $project->custom_value4 = '';
-        $project->is_deleted = 0;
+        $project->is_deleted = false;
 
         return $project;
     }

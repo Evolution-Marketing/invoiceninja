@@ -4,19 +4,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Console\Commands;
 
-use App\Libraries\MultiDB;
-use App\Models\Backup;
-use App\Models\Design;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
-use stdClass;
 
 class ReactBuilder extends Command
 {
@@ -25,7 +20,7 @@ class ReactBuilder extends Command
      *
      * @var string
      */
-    protected $signature = 'ninja:react';
+    protected $signature = 'ninja:react {--type=}';
 
     /**
      * The console command description.
@@ -47,28 +42,43 @@ class ReactBuilder extends Command
     /**
      * Execute the console command.
      *
-     * @return mixed
+     * @return void
      */
     public function handle()
     {
-        $includes = '';
+        if ($this->option('type') == 'local') {
 
-        $directoryIterator = new \RecursiveDirectoryIterator(public_path('react'), \RecursiveDirectoryIterator::SKIP_DOTS);
 
-        foreach (new \RecursiveIteratorIterator($directoryIterator) as $file) {
-            if (str_contains($file->getFileName(), '.js')) {
-                if (str_contains($file->getFileName(), 'index.')) {
-                    $includes .= '<script type="module" crossorigin src="/react/'.$file->getFileName().'"></script>'."\n";
-                } else {
-                    $includes .= '<link rel="modulepreload" href="/react/'.$file->getFileName().'">'."\n";
+
+            $includes = '';
+
+            $directoryIterator = false;
+
+            try {
+                $directoryIterator = new \RecursiveDirectoryIterator(public_path('react/v'.config('ninja.app_version').'/'), \RecursiveDirectoryIterator::SKIP_DOTS);
+            } catch (\Exception $e) {
+                $this->error('React files not found');
+                return;
+            }
+
+            foreach (new \RecursiveIteratorIterator($directoryIterator) as $file) {
+                if ($file->getExtension() == 'js') {
+                    if (str_contains($file->getFileName(), 'index-')) {
+                        $includes .= '<script type="module" crossorigin src="/react/v'.config('ninja.app_version').'/'.$file->getFileName().'"></script>'."\n";
+                    } else {
+                        $includes .= '<link rel="modulepreload" href="/react/v'.config('ninja.app_version').'/'.$file->getFileName().'">'."\n";
+                    }
+                }
+
+                if (str_contains($file->getFileName(), '.css')) {
+                    $includes .= '<link rel="stylesheet" href="/react/v'.config('ninja.app_version').'/'.$file->getFileName().'">'."\n";
                 }
             }
 
-            if (str_contains($file->getFileName(), '.css')) {
-                $includes .= '<link rel="stylesheet" href="/react/'.$file->getFileName().'">'."\n";
-            }
+            file_put_contents(resource_path('views/react/head.blade.php'), $includes);
+
         }
 
-        file_put_contents(resource_path('views/react/head.blade.php'), $includes);
+
     }
 }

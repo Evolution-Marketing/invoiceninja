@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,6 +16,7 @@ use App\Events\RecurringInvoice\RecurringInvoiceWasUpdated;
 use App\Factory\RecurringInvoiceFactory;
 use App\Filters\RecurringInvoiceFilters;
 use App\Http\Requests\RecurringInvoice\ActionRecurringInvoiceRequest;
+use App\Http\Requests\RecurringInvoice\BulkRecurringInvoiceRequest;
 use App\Http\Requests\RecurringInvoice\CreateRecurringInvoiceRequest;
 use App\Http\Requests\RecurringInvoice\DestroyRecurringInvoiceRequest;
 use App\Http\Requests\RecurringInvoice\EditRecurringInvoiceRequest;
@@ -23,6 +24,7 @@ use App\Http\Requests\RecurringInvoice\ShowRecurringInvoiceRequest;
 use App\Http\Requests\RecurringInvoice\StoreRecurringInvoiceRequest;
 use App\Http\Requests\RecurringInvoice\UpdateRecurringInvoiceRequest;
 use App\Http\Requests\RecurringInvoice\UploadRecurringInvoiceRequest;
+use App\Jobs\RecurringInvoice\UpdateRecurring;
 use App\Models\Account;
 use App\Models\RecurringInvoice;
 use App\Repositories\RecurringInvoiceRepository;
@@ -30,9 +32,7 @@ use App\Transformers\RecurringInvoiceTransformer;
 use App\Utils\Ninja;
 use App\Utils\Traits\MakesHash;
 use App\Utils\Traits\SavesDocuments;
-use Carbon\Carbon;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Class RecurringInvoiceController.
@@ -70,7 +70,7 @@ class RecurringInvoiceController extends BaseController
      *
      * @param RecurringInvoiceFilters $filters  The filters
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -81,8 +81,7 @@ class RecurringInvoiceController extends BaseController
      *      description="Lists recurring_invoices, search and filters allow fine grained lists to be generated.
 
         Query parameters can be added to performed more fine grained filtering of the recurring_invoices, these are handled by the RecurringInvoiceFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -118,7 +117,7 @@ class RecurringInvoiceController extends BaseController
      *
      * @param CreateRecurringInvoiceRequest $request  The request
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -128,8 +127,7 @@ class RecurringInvoiceController extends BaseController
      *      tags={"recurring_invoices"},
      *      summary="Gets a new blank RecurringInvoice object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -155,7 +153,11 @@ class RecurringInvoiceController extends BaseController
      */
     public function create(CreateRecurringInvoiceRequest $request)
     {
-        $recurring_invoice = RecurringInvoiceFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $recurring_invoice = RecurringInvoiceFactory::create($user->company()->id, $user->id);
+        $recurring_invoice->auto_bill = $user->company()->settings->auto_bill;
 
         return $this->itemResponse($recurring_invoice);
     }
@@ -165,7 +167,7 @@ class RecurringInvoiceController extends BaseController
      *
      * @param StoreRecurringInvoiceRequest $request  The request
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -175,8 +177,7 @@ class RecurringInvoiceController extends BaseController
      *      tags={"recurring_invoices"},
      *      summary="Adds a RecurringInvoice",
      *      description="Adds an RecurringInvoice to the system",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -202,7 +203,10 @@ class RecurringInvoiceController extends BaseController
      */
     public function store(StoreRecurringInvoiceRequest $request)
     {
-        $recurring_invoice = $this->recurring_invoice_repo->save($request->all(), RecurringInvoiceFactory::create(auth()->user()->company()->id, auth()->user()->id));
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $recurring_invoice = $this->recurring_invoice_repo->save($request->all(), RecurringInvoiceFactory::create($user->company()->id, $user->id));
 
         $recurring_invoice->service()
                           ->triggeredActions($request)
@@ -219,7 +223,7 @@ class RecurringInvoiceController extends BaseController
      * @param ShowRecurringInvoiceRequest $request  The request
      * @param RecurringInvoice $recurring_invoice  The RecurringInvoice
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -228,8 +232,7 @@ class RecurringInvoiceController extends BaseController
      *      tags={"recurring_invoices"},
      *      summary="Shows an RecurringInvoice",
      *      description="Displays an RecurringInvoice by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -275,7 +278,7 @@ class RecurringInvoiceController extends BaseController
      * @param EditRecurringInvoiceRequest $request  The request
      * @param RecurringInvoice $recurring_invoice  The RecurringInvoice
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -284,8 +287,7 @@ class RecurringInvoiceController extends BaseController
      *      tags={"recurring_invoices"},
      *      summary="Shows an RecurringInvoice for editting",
      *      description="Displays an RecurringInvoice by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -331,7 +333,7 @@ class RecurringInvoiceController extends BaseController
      * @param UpdateRecurringInvoiceRequest $request  The request
      * @param RecurringInvoice $recurring_invoice  The RecurringInvoice
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Put(
@@ -340,8 +342,7 @@ class RecurringInvoiceController extends BaseController
      *      tags={"recurring_invoices"},
      *      summary="Updates an RecurringInvoice",
      *      description="Handles the updating of an RecurringInvoice by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -386,7 +387,6 @@ class RecurringInvoiceController extends BaseController
 
         $recurring_invoice->service()
                           ->triggeredActions($request)
-                          ->deletePdf()
                           ->save();
 
         event(new RecurringInvoiceWasUpdated($recurring_invoice, $recurring_invoice->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
@@ -399,51 +399,6 @@ class RecurringInvoiceController extends BaseController
      *
      * @param DestroyRecurringInvoiceRequest $request
      * @param RecurringInvoice $recurring_invoice
-     *
-     * @return     Response
-     *
-     *
-     * @throws \Exception
-     * @OA\Delete(
-     *      path="/api/v1/recurring_invoices/{id}",
-     *      operationId="deleteRecurringInvoice",
-     *      tags={"recurring_invoices"},
-     *      summary="Deletes a RecurringInvoice",
-     *      description="Handles the deletion of an RecurringInvoice by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
-     *      @OA\Parameter(ref="#/components/parameters/include"),
-     *      @OA\Parameter(
-     *          name="id",
-     *          in="path",
-     *          description="The RecurringInvoice Hashed ID",
-     *          example="D2J234DFA",
-     *          required=true,
-     *          @OA\Schema(
-     *              type="string",
-     *              format="string",
-     *          ),
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="Returns a HTTP status",
-     *          @OA\Header(header="X-MINIMUM-CLIENT-VERSION", ref="#/components/headers/X-MINIMUM-CLIENT-VERSION"),
-     *          @OA\Header(header="X-RateLimit-Remaining", ref="#/components/headers/X-RateLimit-Remaining"),
-     *          @OA\Header(header="X-RateLimit-Limit", ref="#/components/headers/X-RateLimit-Limit"),
-     *       ),
-     *       @OA\Response(
-     *          response=422,
-     *          description="Validation error",
-     *          @OA\JsonContent(ref="#/components/schemas/ValidationError"),
-     *
-     *       ),
-     *       @OA\Response(
-     *           response="default",
-     *           description="Unexpected Error",
-     *           @OA\JsonContent(ref="#/components/schemas/Error"),
-     *       ),
-     *     )
      */
     public function destroy(DestroyRecurringInvoiceRequest $request, RecurringInvoice $recurring_invoice)
     {
@@ -453,202 +408,65 @@ class RecurringInvoiceController extends BaseController
     }
 
     /**
-     * @OA\Get(
-     *      path="/api/v1/recurring_invoice/{invitation_key}/download",
-     *      operationId="downloadRecurringInvoice",
-     *      tags={"invoices"},
-     *      summary="Download a specific invoice by invitation key",
-     *      description="Downloads a specific invoice",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
-     *      @OA\Parameter(ref="#/components/parameters/include"),
-     *      @OA\Parameter(
-     *          name="invitation_key",
-     *          in="path",
-     *          description="The Recurring Invoice Invitation Key",
-     *          example="D2J234DFA",
-     *          required=true,
-     *          @OA\Schema(
-     *              type="string",
-     *              format="string",
-     *          ),
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="Returns the recurring invoice pdf",
-     *          @OA\Header(header="X-MINIMUM-CLIENT-VERSION", ref="#/components/headers/X-MINIMUM-CLIENT-VERSION"),
-     *          @OA\Header(header="X-RateLimit-Remaining", ref="#/components/headers/X-RateLimit-Remaining"),
-     *          @OA\Header(header="X-RateLimit-Limit", ref="#/components/headers/X-RateLimit-Limit"),
-     *       ),
-     *       @OA\Response(
-     *          response=422,
-     *          description="Validation error",
-     *          @OA\JsonContent(ref="#/components/schemas/ValidationError"),
-     *
-     *       ),
-     *       @OA\Response(
-     *           response="default",
-     *           description="Unexpected Error",
-     *           @OA\JsonContent(ref="#/components/schemas/Error"),
-     *       ),
-     *     )
-     * @param $invitation_key
-     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
      */
-    public function downloadPdf($invitation_key)
+    public function bulk(BulkRecurringInvoiceRequest $request)
     {
-        $invitation = $this->recurring_invoice_repo->getInvitationByKey($invitation_key);
-        $contact = $invitation->contact;
-        $recurring_invoice = $invitation->recurring_invoice;
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-        $file = $recurring_invoice->service()->getInvoicePdf($contact);
+        if((stripos($request->action, 'send_now') !== false) && $user->hasExactPermission('disable_emails')){
+            return response(['message' => ctrans('texts.disable_emails_error')], 400);
+        }
 
-        return response()->streamDownload(function () use ($file) {
-            echo Storage::get($file);
-        }, basename($file), ['Content-Type' => 'application/pdf']);
-    }
+        $percentage_increase = request()->has('percentage_increase') ? request()->input('percentage_increase') : 0;
 
-    /**
-     * Perform bulk actions on the list view.
-     *
-     * @return Collection
-     *
-     *
-     * @OA\Post(
-     *      path="/api/v1/recurring_invoices/bulk",
-     *      operationId="bulkRecurringInvoices",
-     *      tags={"recurring_invoices"},
-     *      summary="Performs bulk actions on an array of recurring_invoices",
-     *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
-     *      @OA\Parameter(ref="#/components/parameters/index"),
-     *      @OA\RequestBody(
-     *         description="Hashed IDs",
-     *         required=true,
-     *         @OA\MediaType(
-     *             mediaType="application/json",
-     *             @OA\Schema(
-     *                 type="array",
-     *                 @OA\Items(
-     *                     type="integer",
-     *                     description="Array of hashed IDs to be bulk 'actioned",
-     *                     example="[0,1,2,3]",
-     *                 ),
-     *             )
-     *         )
-     *     ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="The RecurringInvoice response",
-     *          @OA\Header(header="X-MINIMUM-CLIENT-VERSION", ref="#/components/headers/X-MINIMUM-CLIENT-VERSION"),
-     *          @OA\Header(header="X-RateLimit-Remaining", ref="#/components/headers/X-RateLimit-Remaining"),
-     *          @OA\Header(header="X-RateLimit-Limit", ref="#/components/headers/X-RateLimit-Limit"),
-     *          @OA\JsonContent(ref="#/components/schemas/RecurringInvoice"),
-     *       ),
-     *       @OA\Response(
-     *          response=422,
-     *          description="Validation error",
-     *          @OA\JsonContent(ref="#/components/schemas/ValidationError"),
+        if (in_array($request->action, ['increase_prices', 'update_prices'])) {
+            UpdateRecurring::dispatch($request->ids, $user->company(), $user, $request->action, $percentage_increase);
 
-     *       ),
-     *       @OA\Response(
-     *           response="default",
-     *           description="Unexpected Error",
-     *           @OA\JsonContent(ref="#/components/schemas/Error"),
-     *       ),
-     *     )
-     */
-    public function bulk()
-    {
-        $action = request()->input('action');
+            return response()->json(['message' => 'Update in progress.'], 200);
+        }
 
-        $ids = request()->input('ids');
+        $recurring_invoices = RecurringInvoice::withTrashed()->find($request->ids);
 
-        $recurring_invoices = RecurringInvoice::withTrashed()->find($this->transformKeys($ids));
+        if ($request->action == 'bulk_update' && $user->can('edit', $recurring_invoices->first())) {
 
-        $recurring_invoices->each(function ($recurring_invoice, $key) use ($action) {
-            if (auth()->user()->can('edit', $recurring_invoice)) {
-                $this->performAction($recurring_invoice, $action, true);
+            $recurring_invoices = RecurringInvoice::withTrashed()
+                    ->company()
+                    ->whereIn('id', $request->ids);
+
+            $this->recurring_invoice_repo->bulkUpdate($recurring_invoices, $request->column, $request->new_value);
+
+            return $this->listResponse(RecurringInvoice::query()->withTrashed()->company()->whereIn('id', $request->ids));
+
+        }
+
+        if ($request->action == 'set_payment_link' && $request->has('subscription_id')) {
+
+            $recurring_invoices->each(function ($invoice) use ($user, $request) {
+                if ($user->can('edit', $invoice)) {
+                    $invoice->service()->setPaymentLink($request->subscription_id)->save();
+                }
+            });
+
+            return $this->listResponse(RecurringInvoice::query()->withTrashed()->whereIn('id', $request->ids)->company());
+        }
+
+        $recurring_invoices->each(function ($recurring_invoice, $key) use ($request, $user) {
+            if ($user->can('edit', $recurring_invoice)) {
+                $this->performAction($recurring_invoice, $request->action, true);
             }
         });
 
-        return $this->listResponse(RecurringInvoice::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(RecurringInvoice::query()->withTrashed()->whereIn('id', $request->ids)->company());
+
     }
 
     /**
      * Recurring Invoice Actions.
-     *
-     *
-     * @OA\Get(
-     *      path="/api/v1/recurring_invoices/{id}/{action}",
-     *      operationId="actionRecurringInvoice",
-     *      tags={"recurring_invoices"},
-     *      summary="Performs a custom action on an RecurringInvoice",
-     *      description="Performs a custom action on an RecurringInvoice.
-
-    The current range of actions are as follows
-    - clone_to_RecurringInvoice
-    - clone_to_quote
-    - history
-    - delivery_note
-    - mark_paid
-    - download
-    - archive
-    - delete
-    - email",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
-     *      @OA\Parameter(ref="#/components/parameters/include"),
-     *      @OA\Parameter(
-     *          name="id",
-     *          in="path",
-     *          description="The RecurringInvoice Hashed ID",
-     *          example="D2J234DFA",
-     *          required=true,
-     *          @OA\Schema(
-     *              type="string",
-     *              format="string",
-     *          ),
-     *      ),
-     *      @OA\Parameter(
-     *          name="action",
-     *          in="path",
-     *          description="The action string to be performed",
-     *          example="clone_to_quote",
-     *          required=true,
-     *          @OA\Schema(
-     *              type="string",
-     *              format="string",
-     *          ),
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="Returns the RecurringInvoice object",
-     *          @OA\Header(header="X-MINIMUM-CLIENT-VERSION", ref="#/components/headers/X-MINIMUM-CLIENT-VERSION"),
-     *          @OA\Header(header="X-RateLimit-Remaining", ref="#/components/headers/X-RateLimit-Remaining"),
-     *          @OA\Header(header="X-RateLimit-Limit", ref="#/components/headers/X-RateLimit-Limit"),
-     *          @OA\JsonContent(ref="#/components/schemas/RecurringInvoice"),
-     *       ),
-     *       @OA\Response(
-     *          response=422,
-     *          description="Validation error",
-     *          @OA\JsonContent(ref="#/components/schemas/ValidationError"),
-     *
-     *       ),
-     *       @OA\Response(
-     *           response="default",
-     *           description="Unexpected Error",
-     *           @OA\JsonContent(ref="#/components/schemas/Error"),
-     *       ),
-     *     )
      * @param ActionRecurringInvoiceRequest $request
      * @param RecurringInvoice $recurring_invoice
      * @param $action
-     * @return Response|mixed
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function action(ActionRecurringInvoiceRequest $request, RecurringInvoice $recurring_invoice, $action)
     {
@@ -704,7 +522,7 @@ class RecurringInvoiceController extends BaseController
                 if (! $bulk) {
                     $this->itemResponse($recurring_invoice);
                 }
-                
+
                 break;
             default:
                 // code...
@@ -717,7 +535,7 @@ class RecurringInvoiceController extends BaseController
      *
      * @param UploadRecurringInvoiceRequest $request
      * @param RecurringInvoice $recurring_invoice
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -727,8 +545,7 @@ class RecurringInvoiceController extends BaseController
      *      tags={"recurring_invoices"},
      *      summary="Uploads a document to a recurring_invoice",
      *      description="Handles the uploading of a document to a recurring_invoice",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -770,9 +587,38 @@ class RecurringInvoiceController extends BaseController
         }
 
         if ($request->has('documents')) {
-            $this->saveDocuments($request->file('documents'), $recurring_invoice);
+            $this->saveDocuments($request->file('documents'), $recurring_invoice, $request->input('is_public', true));
         }
 
         return $this->itemResponse($recurring_invoice->fresh());
     }
+
+    public function downloadPdf(string $invitation_key)
+    {
+        $invitation = $this->recurring_invoice_repo->getInvitationByKey($invitation_key);
+
+        if (! $invitation) {
+            return response()->json(['message' => 'no record found'], 400);
+        }
+
+        $invoice = $invitation->recurring_invoice;
+
+        \Illuminate\Support\Facades\App::setLocale($invitation->contact->preferredLocale());
+
+        $file_name = $invoice->numberFormatter().'.pdf';
+
+        $file = (new \App\Jobs\Entity\CreateRawPdf($invitation))->handle();
+
+        $headers = ['Content-Type' => 'application/pdf'];
+
+        if (request()->input('inline') == 'true') {
+            $headers = array_merge($headers, ['Content-Disposition' => 'inline']);
+        }
+
+        return response()->streamDownload(function () use ($file) {
+            echo $file;
+        }, $file_name, $headers);
+
+    }
+
 }

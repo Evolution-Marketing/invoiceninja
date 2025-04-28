@@ -12,27 +12,58 @@ return [
     |--------------------------------------------------------------------------
     |
     | This file is for storing the credentials for third party services such
-    | as Mailgun, Postmark, AWS and more. This file provides the de facto
+    | as Mailgun, Brevo, Postmark, AWS and more. This file provides the de facto
     | location for this type of information, allowing packages to have
     | a conventional file to locate the various service credentials.
     |
     */
 
     'mailgun' => [
-        'domain' => env('MAILGUN_DOMAIN'),
-        'secret' => env('MAILGUN_SECRET'),
+        'domain' => env('MAILGUN_DOMAIN', ''),
+        'secret' => env('MAILGUN_SECRET', ''),
         'endpoint' => env('MAILGUN_ENDPOINT', 'api.mailgun.net'),
+        'webhook_signing_key' => env('MAILGUN_WEBHOOK_SIGNING_KEY', ''),
         'scheme' => 'https',
+        'from' => [
+            'address' => env('MAILGUN_FROM_ADDRESS', ''),
+            'name' => env('MAILGUN_FROM_NAME', ''),
+        ],
+    ],
+
+    'brevo' => [
+        'secret' => env('BREVO_SECRET', ''),
     ],
 
     'postmark' => [
-        'token' => env('POSTMARK_SECRET'),
+        'token' => env('POSTMARK_SECRET', ''),
+    ],
+
+    'postmark-outlook' => [
+        'token' => env('POSTMARK_OUTLOOK_SECRET', ''),
+        'from' => [
+            'address' => env('POSTMARK_OUTLOOK_FROM_ADDRESS', '')
+        ],
+    ],
+
+    'postmark-broadcast' => [
+        'token' => env('POSTMARK_BROADCAST_SECRET', ''),
+        'from' => [
+            'address' => env('POSTMARK_BROADCAST_FROM_ADDRESS', 'community@invoiceninja.com')
+        ],
     ],
 
     'microsoft' => [
         'client_id' => env('MICROSOFT_CLIENT_ID'),
         'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
         'redirect' => env('MICROSOFT_REDIRECT_URI'),
+    ],
+
+    'mindee' => [
+        'api_key' => env('MINDEE_API_KEY'),
+        'daily_limit' => env('MINDEE_DAILY_LIMIT', 100),
+        'monthly_limit' => env('MINDEE_MONTHLY_LIMIT', 250),
+        'account_daily_limit' => env('MINDEE_ACCOUNT_DAILY_LIMIT', 0),
+        'account_monthly_limit' => env('MINDEE_ACCOUNT_MONTHLY_LIMIT', 0),
     ],
 
     'apple' => [
@@ -46,6 +77,7 @@ return [
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('SES_REGION', 'us-east-1'),
     ],
+
     'sparkpost' => [
         'secret' => env('SPARKPOST_SECRET'),
     ],
@@ -55,8 +87,8 @@ return [
     ],
 
     'stripe' => [
-        'model'  => App\Models\User::class,
-        'key'    => env('STRIPE_KEY'),
+        'model' => App\Models\User::class,
+        'key' => env('STRIPE_KEY'),
         'secret' => env('STRIPE_SECRET'),
     ],
 
@@ -96,4 +128,32 @@ return [
         'redirect' => env('BITBUCKET_OAUTH_REDIRECT'),
     ],
 
+    'tax' => [
+        'zip_tax' => [
+            'key' => env('ZIP_TAX_KEY', false),
+        ],
+    ],
+
+    'chorus' => [
+        'client_id' => env('CHORUS_CLIENT_ID', false),
+        'secret' => env('CHORUS_SECRET', false),
+    ],
+    'gocardless' => [
+        'client_id' => env('GOCARDLESS_CLIENT_ID', null),
+        'client_secret' => env('GOCARDLESS_CLIENT_SECRET', null),
+        'environment' => env('GOCARDLESS_ENVIRONMENT', 'production'),
+        'redirect_uri' => env('GOCARDLESS_REDIRECT_URI', 'https://invoicing.co/gocardless/oauth/connect/confirm'),
+        'testing_company' => env('GOCARDLESS_TESTING_COMPANY', null),
+        'webhook_secret' => env('GOCARDLESS_WEBHOOK_SECRET', null),
+    ],
+    'quickbooks' => [
+        'client_id' => env('QUICKBOOKS_CLIENT_ID', false),
+        'client_secret' => env('QUICKBOOKS_CLIENT_SECRET', false),
+        'redirect' => env('QUICKBOOKS_REDIRECT_URI'),
+        'env' => env('QUICKBOOKS_ENV'),
+        'debug' => env('APP_DEBUG',false)
+    ],
+    'quickbooks_webhook' => [
+        'verifier_token' => env('QUICKBOOKS_VERIFIER_TOKEN', false),
+    ],
 ];

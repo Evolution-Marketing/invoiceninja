@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -34,7 +34,6 @@ use Illuminate\Support\Str;
  */
 trait GeneratesCounter
 {
-
     private int $update_counter;
 
     //todo in the form validation, we need to ensure that if a prefix and pattern is set we throw a validation error,
@@ -60,13 +59,13 @@ trait GeneratesCounter
 
             $counter_entity = $client;
         } elseif ((strpos($pattern, 'groupCounter') !== false) || (strpos($pattern, 'group_counter') !== false)) {
-            if (property_exists($client->group_settings, $counter_string)) {
-                $counter = $client->group_settings->{$counter_string};
+            if ($client->group_settings()->exists() && property_exists($client->group_settings?->settings, $counter_string)) {
+                $counter = $client->group_settings?->settings?->{$counter_string};
             } else {
                 $counter = 1;
             }
 
-            $counter_entity = $client->group_settings;
+            $counter_entity = $client->group_settings ?: $client->company;
         } else {
             $counter = $client->company->settings->{$counter_string};
             $counter_entity = $client->company;
@@ -125,7 +124,7 @@ trait GeneratesCounter
         switch ($entity) {
             case Invoice::class:
                 return 'invoice_number_counter';
-                
+
             case Quote::class:
 
                 if ($this->hasSharedCounter($client, 'quote')) {
@@ -133,35 +132,34 @@ trait GeneratesCounter
                 }
 
                 return 'quote_number_counter';
-                
+
             case RecurringInvoice::class:
                 return 'recurring_invoice_number_counter';
-                
+
             case RecurringQuote::class:
                 return 'recurring_quote_number_counter';
-                
+
             case RecurringExpense::class:
                 return 'recurring_expense_number_counter';
-                
+
             case Payment::class:
                 return 'payment_number_counter';
-                
+
             case Credit::class:
                 if ($this->hasSharedCounter($client, 'credit')) {
                     return 'invoice_number_counter';
                 }
 
                 return 'credit_number_counter';
-                
+
             case Project::class:
                 return 'project_number_counter';
-                
+
             case PurchaseOrder::class:
                 return 'purchase_order_number_counter';
 
             default:
                 return 'default_number_counter';
-
         }
     }
 
@@ -173,7 +171,7 @@ trait GeneratesCounter
      * @param Invoice|null $invoice
      * @return     string              The next invoice number.
      */
-    public function getNextInvoiceNumber(Client $client, ?Invoice $invoice, $is_recurring = false) :string
+    public function getNextInvoiceNumber(Client $client, ?Invoice $invoice, $is_recurring = false): string
     {
         $entity_number = $this->getNextEntityNumber(Invoice::class, $client, $is_recurring);
 
@@ -187,7 +185,7 @@ trait GeneratesCounter
      *
      * @return     string              The next credit number.
      */
-    public function getNextCreditNumber(Client $client, ?Credit $credit) :string
+    public function getNextCreditNumber(Client $client, ?Credit $credit): string
     {
         $entity_number = $this->getNextEntityNumber(Credit::class, $client);
 
@@ -229,7 +227,7 @@ trait GeneratesCounter
      *
      * @return     string              The next payment number.
      */
-    public function getNextPaymentNumber(Client $client, ?Payment $payment) :string
+    public function getNextPaymentNumber(Client $client, ?Payment $payment): string
     {
         $entity_number = $this->getNextEntityNumber(Payment::class, $client);
 
@@ -244,7 +242,7 @@ trait GeneratesCounter
      * @return     string              The next client number.
      * @throws \Exception
      */
-    public function getNextClientNumber(Client $client) :string
+    public function getNextClientNumber(Client $client): string
     {
         //Reset counters if enabled
         $this->resetCounters($client);
@@ -267,7 +265,7 @@ trait GeneratesCounter
      * @param Vendor $vendor    The vendor
      * @return     string                         The next vendor number.
      */
-    public function getNextVendorNumber(Vendor $vendor) :string
+    public function getNextVendorNumber(Vendor $vendor): string
     {
         $this->resetCompanyCounters($vendor->company);
 
@@ -288,7 +286,7 @@ trait GeneratesCounter
      * @param  Project $project
      * @return string  The project number
      */
-    public function getNextProjectNumber(Project $project) :string
+    public function getNextProjectNumber(Project $project): string
     {
         $entity_number = $this->getNextEntityNumber(Project::class, $project->client, false);
 
@@ -301,7 +299,7 @@ trait GeneratesCounter
      * @param   Task    $task    The task
      * @return  string           The next task number.
      */
-    public function getNextTaskNumber(Task $task) :string
+    public function getNextTaskNumber(Task $task): string
     {
         $this->resetCompanyCounters($task->company);
 
@@ -323,14 +321,20 @@ trait GeneratesCounter
      * @param   Expense    $expense    The expense
      * @return  string                 The next expense number.
      */
-    public function getNextExpenseNumber(Expense $expense) :string
+    public function getNextExpenseNumber(Expense $expense): string
     {
         $this->resetCompanyCounters($expense->company);
 
         $counter = $expense->company->settings->expense_number_counter;
         $setting_entity = $expense->company->settings->expense_number_counter;
 
-        $expense_number = $this->checkEntityNumber(Expense::class, $expense, $counter, $expense->company->settings->counter_padding, $expense->company->settings->expense_number_pattern);
+        $pattern = $expense->company->settings->expense_number_pattern;
+        
+        if (strlen($pattern) > 1 && (stripos($pattern, 'counter') === false)) {
+            $pattern = $pattern.'{$counter}';
+        }
+
+        $expense_number = $this->checkEntityNumber(Expense::class, $expense, $counter, $expense->company->settings->counter_padding, $pattern);
 
         $this->incrementCounter($expense->company, 'expense_number_counter');
 
@@ -339,7 +343,7 @@ trait GeneratesCounter
         return $this->replaceUserVars($expense, $entity_number);
     }
 
-    public function getNextPurchaseOrderNumber(PurchaseOrder $purchase_order) :string
+    public function getNextPurchaseOrderNumber(PurchaseOrder $purchase_order): string
     {
         $this->resetCompanyCounters($purchase_order->company);
 
@@ -361,7 +365,7 @@ trait GeneratesCounter
      * @param   RecurringExpense       $expense    The expense
      * @return  string                 The next expense number.
      */
-    public function getNextRecurringExpenseNumber(RecurringExpense $expense) :string
+    public function getNextRecurringExpenseNumber(RecurringExpense $expense): string
     {
         $this->resetCompanyCounters($expense->company);
 
@@ -393,14 +397,14 @@ trait GeneratesCounter
      *
      * @return     bool             True if has shared counter, False otherwise.
      */
-    public function hasSharedCounter(Client $client, string $type = 'quote') : bool
+    public function hasSharedCounter(Client $client, string $type = 'quote'): bool
     {
         if ($type == 'quote') {
             return (bool) $client->getSetting('shared_invoice_quote_counter');
         }
 
         //credit
-        return (bool) $client->getSetting('shared_invoice_credit_counter');    
+        return (bool) $client->getSetting('shared_invoice_credit_counter');
     }
 
     /**
@@ -413,20 +417,15 @@ trait GeneratesCounter
      *
      * @param      string $pattern
      * @param      string $prefix
-     * @return     string The padded and prefixed entity number
+     * @return     string The padded, prefixed and unique entity number
      */
-    private function checkEntityNumber($class, $entity, $counter, $padding, $pattern, $prefix = '') :string
+    private function checkEntityNumber($class, $entity, $counter, $padding, $pattern, $prefix = ''): string
     {
         $check = false;
         $check_counter = 1;
 
         do {
-            
-            $number = $this->padCounter($counter, $padding);
-
-            $number = $this->applyNumberPattern($entity, $number, $pattern);
-
-            $number = $this->prefixCounter($number, $prefix);
+            $number = $this->getFormattedEntityNumber($entity, $counter, $padding, $pattern, $prefix);
 
             $check = $class::where('company_id', $entity->company_id)->where('number', $number)->withTrashed()->exists();
 
@@ -434,13 +433,10 @@ trait GeneratesCounter
             $check_counter++;
 
             if ($check_counter > 100) {
-                
                 $this->update_counter = $counter--;
 
                 return $number.'_'.Str::random(5);
-
             }
-
         } while ($check);
 
         $this->update_counter = $counter--;
@@ -448,8 +444,28 @@ trait GeneratesCounter
         return $number;
     }
 
+    /**
+     * Formats the entity number according to pattern, prefix and padding.
+     *
+     * @param mixed $entity The entity ie App\Models\Client, Invoice, Quote etc
+     * @param int $counter The counter
+     * @param int $padding The padding
+     * @param      string $pattern
+     * @param      string $prefix
+     *
+     * @return     string The padded and prefixed entity number
+     */
+    public function getFormattedEntityNumber($entity, $counter, $padding, $pattern, $prefix = ''): string
+    {
+        $number = $this->padCounter($counter, $padding);
+
+        $number = $this->applyNumberPattern($entity, $number, $pattern);
+
+        return $this->prefixCounter($number, $prefix);
+    }
+
     /*Check if a number is available for use. */
-    public function checkNumberAvailable($class, $entity, $number) :bool
+    public function checkNumberAvailable($class, $entity, $number): bool
     {
         if ($entity = $class::whereCompanyId($entity->company_id)->whereNumber($number)->withTrashed()->exists()) {
             return false;
@@ -464,7 +480,7 @@ trait GeneratesCounter
      * @param $entity
      * @param string $counter_name The counter name
      */
-    private function incrementCounter($entity, string $counter_name) :void
+    private function incrementCounter($entity, string $counter_name): void
     {
         $settings = $entity->settings;
 
@@ -484,7 +500,7 @@ trait GeneratesCounter
         $entity->save();
     }
 
-    private function prefixCounter($counter, $prefix) : string
+    private function prefixCounter($counter, $prefix): string
     {
         if (strlen($prefix) == 0) {
             return $counter;
@@ -501,7 +517,7 @@ trait GeneratesCounter
      *
      * @return     string  the padded counter
      */
-    private function padCounter($counter, $padding) :string
+    private function padCounter($counter, $padding): string
     {
         return str_pad($counter, $padding, '0', STR_PAD_LEFT);
     }
@@ -516,8 +532,17 @@ trait GeneratesCounter
     private function resetCounters(Client $client)
     {
         $reset_counter_frequency = (int) $client->getSetting('reset_counter_frequency_id');
-
+        $settings_entity = $client->getSettingEntity('reset_counter_frequency_id');
+        $settings = $settings_entity->settings;
+        
         if ($reset_counter_frequency == 0) {
+            
+            if ($client->getSetting('reset_counter_date')) {
+                $settings->reset_counter_date = "";
+                $settings_entity->settings = $settings;
+                $settings_entity->saveQuietly();
+            }
+            
             return;
         }
 
@@ -564,20 +589,28 @@ trait GeneratesCounter
                 $new_reset_date = $reset_date->addYears(2);
                 break;
 
-                default:
+            default:
                 $new_reset_date = $reset_date->addYear();
                 break;
         }
 
-        $settings = $client->company->settings;
+        // $settings = $client->company->settings;
         $settings->reset_counter_date = $new_reset_date->format('Y-m-d');
         $settings->invoice_number_counter = 1;
         $settings->quote_number_counter = 1;
         $settings->credit_number_counter = 1;
+        $settings->ticket_number_counter = 1;
+        $settings->payment_number_counter = 1;
+        $settings->project_number_counter = 1;
+        $settings->task_number_counter = 1;
+        $settings->expense_number_counter = 1;
+        $settings->recurring_expense_number_counter = 1;
         $settings->purchase_order_number_counter = 1;
 
-        $client->company->settings = $settings;
-        $client->company->save();
+        // $client->company->settings = $settings;
+        // $client->company->save();
+        $settings_entity->settings = $settings;
+        $settings_entity->saveQuietly();
     }
 
     private function resetCompanyCounters($company)
@@ -590,48 +623,64 @@ trait GeneratesCounter
             return false;
         }
 
-        switch ($company->reset_counter_frequency_id) {
+        $settings = $company->settings;
+
+        $reset_counter_frequency = (int) $settings->reset_counter_frequency_id;
+
+        if ($reset_counter_frequency == 0) {
+            if ($settings->reset_counter_date) {
+                $settings->reset_counter_date = "";
+                $company->settings = $settings;
+                $company->save();
+            }
+
+            return;
+        }
+
+        switch ($reset_counter_frequency) {
             case RecurringInvoice::FREQUENCY_DAILY:
-                $reset_date->addDay();
+                $new_reset_date = $reset_date->addDay();
                 break;
             case RecurringInvoice::FREQUENCY_WEEKLY:
-                $reset_date->addWeek();
+                $new_reset_date = $reset_date->addWeek();
                 break;
             case RecurringInvoice::FREQUENCY_TWO_WEEKS:
-                $reset_date->addWeeks(2);
+                $new_reset_date = $reset_date->addWeeks(2);
                 break;
             case RecurringInvoice::FREQUENCY_FOUR_WEEKS:
-                $reset_date->addWeeks(4);
+                $new_reset_date = $reset_date->addWeeks(4);
                 break;
             case RecurringInvoice::FREQUENCY_MONTHLY:
-                $reset_date->addMonth();
+                $new_reset_date = $reset_date->addMonth();
                 break;
             case RecurringInvoice::FREQUENCY_TWO_MONTHS:
-                $reset_date->addMonths(2);
+                $new_reset_date = $reset_date->addMonths(2);
                 break;
             case RecurringInvoice::FREQUENCY_THREE_MONTHS:
-                $reset_date->addMonths(3);
+                $new_reset_date = $reset_date->addMonths(3);
                 break;
             case RecurringInvoice::FREQUENCY_FOUR_MONTHS:
-                $reset_date->addMonths(4);
+                $new_reset_date = $reset_date->addMonths(4);
                 break;
             case RecurringInvoice::FREQUENCY_SIX_MONTHS:
-                $reset_date->addMonths(6);
+                $new_reset_date = $reset_date->addMonths(6);
                 break;
             case RecurringInvoice::FREQUENCY_ANNUALLY:
-                $reset_date->addYear();
+                $new_reset_date = $reset_date->addYear();
                 break;
             case RecurringInvoice::FREQUENCY_TWO_YEARS:
-                $reset_date->addYears(2);
+                $new_reset_date = $reset_date->addYears(2);
+                break;
+
+            default:
+                $new_reset_date = $reset_date->addYear();
                 break;
         }
 
-        $settings = $company->settings;
-        $settings->reset_counter_date = $reset_date->format('Y-m-d');
+        $settings->reset_counter_date = $new_reset_date->format('Y-m-d');
         $settings->invoice_number_counter = 1;
         $settings->quote_number_counter = 1;
         $settings->credit_number_counter = 1;
-        $settings->vendor_number_counter = 1;
         $settings->ticket_number_counter = 1;
         $settings->payment_number_counter = 1;
         $settings->project_number_counter = 1;
@@ -653,7 +702,7 @@ trait GeneratesCounter
      *
      * @return     string                The formatted number pattern
      */
-    private function applyNumberPattern($entity, string $counter, $pattern) :string
+    private function applyNumberPattern($entity, string $counter, $pattern): string
     {
         if (! $pattern) {
             return $counter;
@@ -685,7 +734,8 @@ trait GeneratesCounter
             $replace[] = str_pad(($user_id), 2, '0', STR_PAD_LEFT);
         }
 
-        $matches = false;
+        $matches = [];
+
         preg_match('/{\$date:(.*?)}/', $pattern, $matches);
         if (count($matches) > 1) {
             $format = $matches[1];
@@ -751,10 +801,10 @@ trait GeneratesCounter
             $replace[] = $client->number;
 
             $search[] = '{$client_id_number}';
-            $replace[] = $client->id_number;
+            $replace[] = $client->id_number ?: $client->number;
 
             $search[] = '{$clientIdNumber}';
-            $replace[] = $client->id_number;
+            $replace[] = $client->id_number ?: $client->number;
         }
 
         return str_replace($search, $replace, $pattern);
@@ -770,16 +820,16 @@ trait GeneratesCounter
         $replace = [];
 
         $search[] = '{$user_custom1}';
-        $replace[] = $entity->user->custom_value1;
+        $replace[] = $entity->user->custom_value1 ?? '';
 
         $search[] = '{$user_custom2}';
-        $replace[] = $entity->user->custom_value2;
+        $replace[] = $entity->user->custom_value2 ?? '';
 
         $search[] = '{$user_custom3}';
-        $replace[] = $entity->user->custom_value3;
+        $replace[] = $entity->user->custom_value3 ?? '';
 
         $search[] = '{$user_custom4}';
-        $replace[] = $entity->user->custom_value4;
+        $replace[] = $entity->user->custom_value4 ?? '';
 
         return str_replace($search, $replace, $pattern);
     }

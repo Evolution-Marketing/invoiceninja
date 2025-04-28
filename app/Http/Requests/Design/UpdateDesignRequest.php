@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,25 +12,43 @@
 namespace App\Http\Requests\Design;
 
 use App\Http\Requests\Request;
+use App\Models\Account;
 use App\Utils\Traits\ChecksEntityStatus;
 
 class UpdateDesignRequest extends Request
 {
     use ChecksEntityStatus;
 
+    private array $valid_entities = [
+        'invoice',
+        'payment',
+        'client',
+        'quote',
+        'credit',
+        'purchase_order',
+        'project',
+        'task'
+    ];
+
     /**
      * Determine if the user is authorized to make this request.
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->isAdmin();
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->isAdmin() && $user->account->hasFeature(Account::FEATURE_API);
     }
 
     public function rules()
     {
-        return [];
+        return [
+            'is_template' => 'sometimes|boolean',
+            'entities' => 'sometimes|string|nullable'
+        ];
     }
 
     public function prepareForValidation()
@@ -60,6 +78,21 @@ class UpdateDesignRequest extends Request
         if (! array_key_exists('body', $input['design']) || is_null($input['design']['body'])) {
             $input['design']['body'] = '';
         }
+
+        if (array_key_exists('entities', $input)) {
+            $user_entities = explode(",", $input['entities']);
+
+            $e = [];
+
+            foreach ($user_entities as $entity) {
+                if (in_array($entity, $this->valid_entities)) {
+                    $e[] = $entity;
+                }
+            }
+
+            $input['entities'] = implode(",", $e);
+        }
+
 
         $this->replace($input);
     }

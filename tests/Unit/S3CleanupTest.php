@@ -11,15 +11,14 @@
 
 namespace Tests\Unit;
 
-use App\DataMapper\ClientSettings;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class S3CleanupTest extends TestCase
 {
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
     }

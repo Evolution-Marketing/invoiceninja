@@ -11,7 +11,6 @@
 
 namespace Tests\Feature\Import\Wave;
 
-use App\Import\Providers\BaseImport;
 use App\Import\Providers\Wave;
 use App\Import\Transformer\BaseTransformer;
 use App\Models\Client;
@@ -27,8 +26,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Import\Providers\Wave
+ * 
+ *  App\Import\Providers\Wave
  */
 class WaveTest extends TestCase
 {
@@ -197,7 +196,7 @@ class WaveTest extends TestCase
             'import_type' => 'waveaccounting',
         ];
 
-        Cache::put($hash.'-expense', base64_encode($csv), 360);
+        Cache::put($hash.'-invoice', base64_encode($csv), 360);
 
         $csv_importer = new Wave($data, $this->company);
 

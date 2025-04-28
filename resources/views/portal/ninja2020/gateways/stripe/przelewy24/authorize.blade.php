@@ -7,6 +7,8 @@
     @else
     <meta name="stripe-publishable-key" content="{{ $gateway->company_gateway->getPublishableKey() }}">
     @endif
+
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -47,7 +49,7 @@
     @component('portal.ninja2020.components.general.card-element', ['title' => ctrans('texts.country')])
         <select name="countries" id="country" class="form-select input w-full bg-white" required>
             @foreach($countries as $country)
-                <option value="{{ $country->iso_3166_2 }}">{{ $country->iso_3166_2 }} ({{ $country->name }})</option>
+                <option value="{{ $country->iso_3166_2 }}">{{ $country->iso_3166_2 }} ({{ $country->getName() }})</option>
             @endforeach
         </select>
     @endcomponent
@@ -55,7 +57,7 @@
     @component('portal.ninja2020.components.general.card-element', ['title' => ctrans('texts.currency')])
         <select name="currencies" id="currency" class="form-select input w-full">
             @foreach($currencies as $currency)
-                <option value="{{ $currency->code }}">{{ $currency->code }} ({{ $currency->name }})</option>
+                <option value="{{ $currency->code }}">{{ $currency->code }} ({{ $currency->getName() }})</option>
             @endforeach
         </select>
     @endcomponent
@@ -70,7 +72,7 @@
 
     @component('portal.ninja2020.components.general.card-element-single')
         <input type="checkbox" class="form-checkbox mr-1" id="accept-terms" required>
-        <label for="accept-terms" class="cursor-pointer">{{ ctrans('texts.ach_authorization', ['company' => auth()->user()->company->present()->name, 'email' => auth()->guard('contact')->user()->client->company->settings->email]) }}</label>
+        <label for="accept-terms" class="cursor-pointer">{{ ctrans('texts.ach_authorization', ['company' => auth()->guard('contact')->user()->company->present()->name, 'email' => auth()->guard('contact')->user()->client->company->settings->email]) }}</label>
     @endcomponent
 
     @component('portal.ninja2020.gateways.includes.pay_now', ['id' => 'save-button'])
@@ -80,5 +82,5 @@
 
 @section('gateway_footer')
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-sepa.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-sepa.js')
 @endsection

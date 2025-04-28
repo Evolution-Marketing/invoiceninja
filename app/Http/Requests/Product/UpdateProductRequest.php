@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,7 +12,6 @@
 namespace App\Http\Requests\Product;
 
 use App\Http\Requests\Request;
-use App\Models\Product;
 use App\Utils\Traits\ChecksEntityStatus;
 
 class UpdateProductRequest extends Request
@@ -24,21 +23,29 @@ class UpdateProductRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', Product::class);
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('edit', $this->product);
     }
 
     public function rules()
     {
-        if ($this->input('documents') && is_array($this->input('documents'))) {
-            $documents = count($this->input('documents'));
+        if ($this->file('documents') && is_array($this->file('documents'))) {
+            $rules['documents.*'] = $this->fileValidation();
+        } elseif ($this->file('documents')) {
+            $rules['documents'] = $this->fileValidation();
+        } else {
+            $rules['documents'] = 'bail|sometimes|array';
+        }
 
-            foreach (range(0, $documents) as $index) {
-                $rules['documents.'.$index] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-            }
-        } elseif ($this->input('documents')) {
-            $rules['documents'] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
+        if ($this->file('file') && is_array($this->file('file'))) {
+            $rules['file.*'] = $this->fileValidation();
+        } elseif ($this->file('file')) {
+            $rules['file'] = $this->fileValidation();
         }
 
         $rules['cost'] = 'numeric';
@@ -55,7 +62,7 @@ class UpdateProductRequest extends Request
     {
         $input = $this->all();
 
-        if (! isset($input['quantity']) || $input['quantity'] < 1) {
+        if (! isset($input['quantity'])) {
             $input['quantity'] = 1;
         }
 

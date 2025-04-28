@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,8 +13,6 @@ namespace App\Http\Controllers\Contact;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Controllers\Controller;
-use App\Jobs\Account\CreateAccount;
-use App\Libraries\MultiDB;
 use App\Libraries\OAuth\OAuth;
 use App\Models\ClientContact;
 use App\Models\User;
@@ -60,7 +58,7 @@ class LoginController extends BaseController
      *
      * @param Request $request The request
      *
-     * @return     Response|User Process user login.
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\Response
      * @throws \Illuminate\Validation\ValidationException
      */
     public function apiLogin(Request $request)
@@ -88,7 +86,7 @@ class LoginController extends BaseController
      * Redirect the user to the provider authentication page.
      *
      * @param string $provider
-     * @return void
+     * @return mixed
      */
     public function redirectToProvider(string $provider)
     {

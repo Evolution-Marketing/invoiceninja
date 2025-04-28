@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -24,7 +24,6 @@ use App\Models\Design;
 use App\Repositories\DesignRepository;
 use App\Transformers\DesignTransformer;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 
@@ -59,8 +58,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Gets a list of designs",
      *      description="Lists designs",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -84,7 +82,7 @@ class DesignController extends BaseController
      *       ),
      *     )
      * @param DesignFilters $filters
-     * @return Response|mixed
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function index(DesignFilters $filters)
     {
@@ -98,7 +96,7 @@ class DesignController extends BaseController
      *
      * @param ShowDesignRequest $request
      * @param Design $design
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -107,8 +105,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Shows a design",
      *      description="Displays a design by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -153,7 +150,7 @@ class DesignController extends BaseController
      *
      * @param EditDesignRequest $request
      * @param Design $design
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -162,8 +159,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Shows a design for editting",
      *      description="Displays a design by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -208,7 +204,7 @@ class DesignController extends BaseController
      *
      * @param UpdateDesignRequest $request
      * @param Design $design
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -218,8 +214,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Updates a design",
      *      description="Handles the updating of a design by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -270,7 +265,7 @@ class DesignController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateDesignRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -280,8 +275,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Gets a new blank design object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -307,7 +301,10 @@ class DesignController extends BaseController
      */
     public function create(CreateDesignRequest $request)
     {
-        $design = DesignFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $design = DesignFactory::create($user->company()->id, $user->id);
 
         return $this->itemResponse($design);
     }
@@ -316,7 +313,7 @@ class DesignController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreDesignRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -326,8 +323,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Adds a design",
      *      description="Adds an design to a company",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -353,7 +349,11 @@ class DesignController extends BaseController
      */
     public function store(StoreDesignRequest $request)
     {
-        $design = DesignFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $design = DesignFactory::create($user->company()->id, $user->id);
+
         $design->fill($request->all());
         $design->save();
 
@@ -415,7 +415,7 @@ class DesignController extends BaseController
      *
      * @param DestroyDesignRequest $request
      * @param Design $design
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -425,8 +425,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Deletes a design",
      *      description="Handles the deletion of a design by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -474,7 +473,7 @@ class DesignController extends BaseController
     /**
      * Perform bulk actions on the list view.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Post(
@@ -483,8 +482,7 @@ class DesignController extends BaseController
      *      tags={"designs"},
      *      summary="Performs bulk actions on an array of designs",
      *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
      *      @OA\RequestBody(
@@ -528,22 +526,33 @@ class DesignController extends BaseController
 
         $ids = request()->input('ids');
 
-        $designs = Design::withTrashed()->find($this->transformKeys($ids));
+        $designs = Design::withTrashed()->company()->whereIn('id', $this->transformKeys($ids));
 
-        $designs->each(function ($design, $key) use ($action) {
-            if (auth()->user()->can('edit', $design)) {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $designs->each(function ($design, $key) use ($action, $user) {
+            if ($user->can('edit', $design)) {
                 $this->design_repo->{$action}($design);
             }
         });
 
-        return $this->listResponse(Design::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(Design::withTrashed()->company()->whereIn('id', $this->transformKeys($ids)));
     }
 
     public function default(DefaultDesignRequest $request)
     {
         $design_id = $request->input('design_id');
         $entity = $request->input('entity');
-        $company = auth()->user()->getCompany();
+        $settings_level = $request->input('settings_level', 'company');
+        $group_settings_id = $request->input('group_settings_id', false);
+        $client_id = $request->input('client_id', false);
+
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $company = $user->getCompany();
 
         $design = Design::where('company_id', $company->id)
                         ->orWhereNull('company_id')
@@ -556,19 +565,107 @@ class DesignController extends BaseController
 
         switch ($entity) {
             case 'invoice':
-                $company->invoices()->update(['design_id' => $design_id]);
+
+                $company->invoices()
+                        ->withTrashed()
+                        ->when($settings_level == 'company', function ($query) {
+                            $query->where(function ($query) {
+                                $query->whereDoesntHave('client.group_settings')
+                                    ->orWhereHas('client.group_settings', function ($q) {
+
+                                        $q->whereRaw("JSON_EXTRACT(settings, '$.invoice_design_id') IS NULL")
+                                        ->orWhereRaw("JSON_EXTRACT(settings, '$.invoice_design_id') = ''");
+
+                                    });
+                            });
+                        })
+                        ->when($settings_level == 'group_settings' && $group_settings_id, function ($query) use ($group_settings_id) {
+
+                            $query->whereHas('client', function ($q) use ($group_settings_id) {
+                                $q->where('group_settings_id', $group_settings_id);
+                            });
+
+                        })
+                        ->when($settings_level == 'client' && $client_id, function ($query) use ($client_id) {
+
+                            $query->where('client_id', $client_id);
+
+                        })->update(['design_id' => $design_id]);
+
+                
+                // Recurring Invoice Designs are set using the global company level.
+                if ($settings_level == 'company') {
+                    $company->recurring_invoices()->withTrashed()->update(['design_id' => $design_id]);
+                }
+
                 break;
             case 'quote':
-                $company->quotes()->update(['design_id' => $design_id]);
+
+                $company->quotes()
+                        ->withTrashed()
+                        ->when($settings_level == 'company', function ($query) {
+                            $query->where(function ($query) {
+                                $query->whereDoesntHave('client.group_settings')
+                                    ->orWhereHas('client.group_settings', function ($q) {
+
+                                        $q->whereRaw("JSON_EXTRACT(settings, '$.invoice_design_id') IS NULL")
+                                        ->orWhereRaw("JSON_EXTRACT(settings, '$.invoice_design_id') = ''");
+
+                                    });
+                            });
+                        })
+                        ->when($settings_level == 'group_settings' && $group_settings_id, function ($query) use ($group_settings_id) {
+
+                            $query->whereHas('client', function ($q) use ($group_settings_id) {
+                                $q->where('group_settings_id', $group_settings_id);
+                            });
+
+                        })
+                        ->when($settings_level == 'client' && $client_id, function ($query) use ($client_id) {
+
+                            $query->where('client_id', $client_id);
+
+                        })
+                        ->update(['design_id' => $design_id]);
+
                 break;
             case 'credit':
-                $company->credits()->update(['design_id' => $design_id]);
+
+                $company->credits()
+                        ->withTrashed()
+                        ->when($settings_level == 'company', function ($query) {
+                            $query->where(function ($query) {
+                                $query->whereDoesntHave('client.group_settings')
+                                    ->orWhereHas('client.group_settings', function ($q) {
+
+                                        $q->whereRaw("JSON_EXTRACT(settings, '$.invoice_design_id') IS NULL")
+                                        ->orWhereRaw("JSON_EXTRACT(settings, '$.invoice_design_id') = ''");
+
+                                    });
+                            });
+                        })
+                        ->when($settings_level == 'group_settings' && $group_settings_id, function ($query) use ($group_settings_id) {
+
+                            $query->whereHas('client', function ($q) use ($group_settings_id) {
+                                $q->where('group_settings_id', $group_settings_id);
+                            });
+
+                        })
+                        ->when($settings_level == 'client' && $client_id, function ($query) use ($client_id) {
+
+                            $query->where('client_id', $client_id);
+
+                        })
+                        ->update(['design_id' => $design_id]);
+
                 break;
+
             case 'purchase_order':
-                $company->purchase_orders()->update(['design_id' => $design_id]);
+                $company->purchase_orders()->withTrashed()->update(['design_id' => $design_id]);
                 break;
             case 'recurring_invoice':
-                $company->recurring_invoices()->update(['design_id' => $design_id]);
+                $company->recurring_invoices()->withTrashed()->update(['design_id' => $design_id]);
+
                 break;
             default:
                 // code...

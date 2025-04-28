@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,8 +19,6 @@ class PaymentEmailFailureActivity implements ShouldQueue
 {
     use UserNotifies;
 
-    public $delay = 5;
-
     /**
      * Create the event listener.
      *
@@ -34,7 +32,7 @@ class PaymentEmailFailureActivity implements ShouldQueue
      * Handle the event.
      *
      * @param object $event
-     * @return bool
+     * @return void
      */
     public function handle($event)
     {
@@ -43,6 +41,6 @@ class PaymentEmailFailureActivity implements ShouldQueue
         $payment = $event->payment;
 
         nlog("i failed emailing {$payment->number}");
-        // nlog(print_r($event->errors,1));
+
     }
 }

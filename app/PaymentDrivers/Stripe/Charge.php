@@ -5,33 +5,27 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers\Stripe;
 
-use App\Events\Payment\PaymentWasCreated;
 use App\Jobs\Util\SystemLogger;
 use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
-use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentHash;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
 use App\PaymentDrivers\StripePaymentDriver;
-use App\PaymentDrivers\Stripe\ACH;
-use App\Utils\Ninja;
 use App\Utils\Traits\MakesHash;
-use Stripe\Exception\ApiConnectionException;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\AuthenticationException;
 use Stripe\Exception\CardException;
 use Stripe\Exception\InvalidRequestException;
 use Stripe\Exception\RateLimitException;
-use Stripe\StripeClient;
 
 class Charge
 {
@@ -49,23 +43,20 @@ class Charge
      * Create a charge against a payment method.
      * @param ClientGatewayToken $cgt
      * @param PaymentHash $payment_hash
-     * @return bool success/failure
+     * @return mixed success/failure
      * @throws \Laracasts\Presenter\Exceptions\PresenterException
      */
     public function tokenBilling(ClientGatewayToken $cgt, PaymentHash $payment_hash)
     {
         if ($cgt->gateway_type_id == GatewayType::BANK_TRANSFER) {
             return (new ACH($this->stripe))->tokenBilling($cgt, $payment_hash);
+        } elseif ($cgt->gateway_type_id == GatewayType::ACSS) {
+            return (new ACSS($this->stripe))->tokenBilling($cgt, $payment_hash);
         }
 
         $amount = array_sum(array_column($payment_hash->invoices(), 'amount')) + $payment_hash->fee_total;
-        $invoice = Invoice::whereIn('id', $this->transformKeys(array_column($payment_hash->invoices(), 'invoice_id')))->withTrashed()->first();
 
-        if ($invoice) {
-            $description = "Invoice {$invoice->number} for {$amount} for client {$this->stripe->client->present()->name()}";
-        } else {
-            $description = "Payment with no invoice for amount {$amount} for client {$this->stripe->client->present()->name()}";
-        }
+        $description = $this->stripe->getDescription(false);
 
         $this->stripe->init();
 
@@ -88,8 +79,19 @@ class Charge
             if ($cgt->gateway_type_id == GatewayType::SEPA) {
                 $data['payment_method_types'] = ['sepa_debit'];
             }
+            if ($cgt->gateway_type_id == GatewayType::BACS) {
+                $data['payment_method_types'] = ['bacs_debit'];
+            }
+            if ($cgt->gateway_type_id == GatewayType::CREDIT_CARD) {
+                $data['payment_method_types'] = ["card","link"];
+            }
 
-            $response = $this->stripe->createPaymentIntent($data, $this->stripe->stripe_connect_auth);
+            /* Should improve token billing with client not present */
+            if (!auth()->guard('contact')->check()) {
+                $data['off_session'] = true;
+            }
+
+            $response = $this->stripe->createPaymentIntent($data);
 
             SystemLogger::dispatch($response, SystemLog::CATEGORY_GATEWAY_RESPONSE, SystemLog::EVENT_GATEWAY_SUCCESS, SystemLog::TYPE_STRIPE, $this->stripe->client, $this->stripe->client->company);
         } catch (\Exception $e) {
@@ -102,29 +104,26 @@ class Charge
             ];
 
             switch ($e) {
+                /** @var \Stripe\Exception\CardException $e */
                 case $e instanceof CardException:
-                    $data['status'] = $e->getHttpStatus();
-                    $data['error_type'] = $e->getError()->type;
-                    $data['error_code'] = $e->getError()->code;
-                    $data['param'] = $e->getError()->param;
-                    $data['message'] = $e->getError()->message;
-                break;
+                    $data['message'] = $e->getError()->message ?? $e->getMessage();
+                    break;
                 case $e instanceof RateLimitException:
                     $data['message'] = 'Too many requests made to the API too quickly';
-                break;
+                    break;
                 case $e instanceof InvalidRequestException:
                     $data['message'] = 'Invalid parameters were supplied to Stripe\'s API';
-                break;
+                    break;
                 case $e instanceof AuthenticationException:
                     $data['message'] = 'Authentication with Stripe\'s API failed';
-                break;
+                    break;
                 case $e instanceof ApiErrorException:
                     $data['message'] = 'Network communication with Stripe failed';
-                break;
+                    break;
 
                 default:
                     $data['message'] = $e->getMessage();
-                break;
+                    break;
             }
 
             $this->stripe->processInternallyFailedPayment($this->stripe, $e);
@@ -139,15 +138,31 @@ class Charge
         if ($cgt->gateway_type_id == GatewayType::SEPA) {
             $payment_method_type = PaymentType::SEPA;
             $status = Payment::STATUS_PENDING;
+        } elseif ($cgt->gateway_type_id == GatewayType::BACS) {
+            $payment_method_type = PaymentType::BACS;
+            $status = Payment::STATUS_PENDING;
         } else {
-            $payment_method_type = $response->charges->data[0]->payment_method_details->card->brand;
+            if (isset($response->latest_charge)) {
+                $charge = \Stripe\Charge::retrieve($response->latest_charge, $this->stripe->stripe_connect_auth);
+                $payment_method_type = $charge->payment_method_details->card->brand;
+            } elseif (isset($response->charges->data[0]->payment_method_details->card->brand)) {
+                $payment_method_type = $response->charges->data[0]->payment_method_details->card->brand;
+            } else {
+                $payment_method_type = 'visa';
+            }
+
             $status = Payment::STATUS_COMPLETED;
+        }
+
+
+        if (!in_array($response?->status, ['succeeded', 'processing'])) {
+            $this->stripe->processInternallyFailedPayment($this->stripe, new \Exception('Auto billing failed.', 400));
         }
 
         $data = [
             'gateway_type_id' => $cgt->gateway_type_id,
             'payment_type' => $this->transformPaymentTypeToConstant($payment_method_type),
-            'transaction_reference' => $response->charges->data[0]->id,
+            'transaction_reference' => isset($response->latest_charge) ? $response->latest_charge : $response->charges->data[0]->id,
             'amount' => $amount,
         ];
 
@@ -155,6 +170,7 @@ class Charge
         $payment->meta = $cgt->meta;
         $payment->save();
 
+        $payment_hash->data = array_merge((array) $payment_hash->data, ['payment_intent' => $response, 'amount_with_fee' => $amount]);
         $payment_hash->payment_id = $payment->id;
         $payment_hash->save();
 
@@ -180,15 +196,14 @@ class Charge
         switch ($type) {
             case 'visa':
                 return PaymentType::VISA;
-                break;
             case 'mastercard':
                 return PaymentType::MASTERCARD;
-                break;
             case PaymentType::SEPA:
                 return PaymentType::SEPA;
+            case PaymentType::BACS:
+                return PaymentType::BACS;
             default:
                 return PaymentType::CREDIT_CARD_OTHER;
-                break;
         }
     }
 }

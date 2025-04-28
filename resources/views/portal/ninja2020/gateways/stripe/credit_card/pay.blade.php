@@ -7,7 +7,11 @@
     if($gateway_instance->token_billing == 'off' || $gateway_instance->token_billing == 'optin'){
         $token_billing_string = 'false';
     }
-    
+
+    if (isset($pre_payment) && $pre_payment == '1' && isset($is_recurring) && $is_recurring == '1') {
+        $token_billing_string = 'true';
+    }
+
     
 @endphp
 
@@ -23,6 +27,8 @@
     <meta name="only-authorization" content="">
     <meta name="client-postal-code" content="{{ $client->postal_code ?? '' }}">
     <meta name="stripe-require-postal-code" content="{{ $gateway->company_gateway->require_postal_code }}">
+
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -47,23 +53,23 @@
     @include('portal.ninja2020.gateways.includes.payment_details')
 
     @component('portal.ninja2020.components.general.card-element', ['title' => ctrans('texts.pay_with')])
-        <ul class="list-none hover:list-disc">
+    <ul class="list-none">
         @if(count($tokens) > 0)
             @foreach($tokens as $token)
-            <li class="py-2 hover:text-blue hover:bg-blue-600">
+            <li class="py-2 cursor-pointer">
                 <label class="mr-4">
                     <input
                         type="radio"
                         data-token="{{ $token->token }}"
                         name="payment-type"
-                        class="form-check-input text-indigo-600 rounded-full cursor-pointer toggle-payment-with-token toggle-payment-with-token"/>
+                        class="form-check-input text-indigo-600 rounded-full cursor-pointer toggle-payment-with-token"/>
                     <span class="ml-1 cursor-pointer">**** {{ $token->meta?->last4 }}</span>
                 </label>
             </li>
             @endforeach
         @endisset
 
-            <li class="py-2 hover:text-blue hover:bg-blue-600">
+            <li class="py-2 cursor-pointer">
                 <label>
                     <input
                         type="radio"
@@ -85,13 +91,18 @@
 
 @section('gateway_footer')
     <script>
-        Livewire.on('passed-required-fields-check', (event) => {
-            if (event.hasOwnProperty('client_postal_code')) {
-                document.querySelector('meta[name=client-postal-code]').content = event.client_postal_code;
-            }
+        document.addEventListener('livewire:init', () => {
+
+            Livewire.on('passed-required-fields-check', (event) => {
+                if (event.hasOwnProperty('client_postal_code')) {
+                    document.querySelector('meta[name=client-postal-code]').content = event.client_postal_code;
+                }
+            });
+
         });
+        
     </script>
 
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-credit-card.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-credit-card.js')
 @endsection

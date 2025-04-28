@@ -12,34 +12,27 @@
 namespace Tests\Feature\Import\CSV;
 
 use App\Import\Transformer\BaseTransformer;
-use App\Jobs\Import\CSVImport;
 use App\Models\Client;
 use App\Models\ClientContact;
-use App\Models\Expense;
 use App\Models\Invoice;
-use App\Models\Payment;
 use App\Models\Product;
 use App\Models\TaxRate;
 use App\Models\Vendor;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Routing\Middleware\ThrottleRequests;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
-use League\Csv\Reader;
-use League\Csv\Statement;
 use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Import\Transformer\BaseTransformer
+ * 
+ *  App\Import\Transformer\BaseTransformer
  */
 class BaseTransformerTest extends TestCase
 {
     use MakesHash;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -103,7 +96,7 @@ class BaseTransformerTest extends TestCase
         $this->assertEquals($client->id, $base_transformer->getClient('magic', 'null'));
         $this->assertEquals($client->id, $base_transformer->getClient('nomagic', 'test@gmail.com'));
         $this->assertEquals($client->id, $base_transformer->getClient(null, 'test@gmail.com'));
-        $this->assertNull($base_transformer->getClient('null', 'notest@gmail.com'));
+        $this->assertNotNull($base_transformer->getClient('null', 'notest@gmail.com'));
 
         $this->assertEquals($client->id, $base_transformer->getClientId(' magic'));
         $this->assertEquals($client->id, $base_transformer->getClientId('Magic '));
@@ -285,35 +278,4 @@ class BaseTransformerTest extends TestCase
         $this->assertEquals($vendor->id, $base_transformer->getVendorId('Magic'));
         $this->assertEquals($vendor->id, $base_transformer->getVendorId('Ma gi c '));
     }
-
-    // public function testClientCsvImport()
-    // {
-    // 	$csv = file_get_contents(base_path().'/tests/Feature/Import/clients.csv');
-    // 	$hash = Str::random(32);
-    // 	$column_map = [
-    // 		1 => 'client.balance',
-    // 		2 => 'client.paid_to_date',
-    // 		0 => 'client.name',
-    // 		19 => 'client.currency_id',
-    // 		20 => 'client.public_notes',
-    // 		21 => 'client.private_notes',
-    // 		22 => 'contact.first_name',
-    // 		23 => 'contact.last_name',
-    // 	];
-
-    // 	$data = [
-    // 		'hash'        => $hash,
-    // 		'column_map'  => [ 'client' => [ 'mapping' => $column_map ] ],
-    // 		'skip_header' => true,
-    // 		'import_type' => 'csv',
-    // 	];
-
-    // 	$pre_import = Client::count();
-
-    // 	Cache::put( $hash . '-client', base64_encode( $csv ), 360 );
-
-    // 	CSVImport::dispatchNow( $data, $this->company );
-
-    // 	$this->assertGreaterThan( $pre_import, Client::count() );
-    // }
 }

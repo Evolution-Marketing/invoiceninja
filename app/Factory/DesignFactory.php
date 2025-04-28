@@ -4,18 +4,19 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Factory;
 
+use App\DataProviders\DesignBlocks;
 use App\Models\Design;
 
 class DesignFactory
 {
-    public static function create(int $company_id, int $user_id) :Design
+    public static function create(int $company_id, int $user_id): Design
     {
         $design = new Design();
         $design->user_id = $user_id;
@@ -24,7 +25,9 @@ class DesignFactory
         $design->is_active = true;
         $design->is_custom = true;
         $design->name = '';
-        $design->design = '';
+        $design->is_template = false;
+        $design->entities = '';
+        $design->design = new DesignBlocks();
 
         return $design;
     }

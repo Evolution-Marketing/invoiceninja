@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,6 +19,7 @@ use App\Models\GatewayType;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\Common\MethodInterface;
 use App\PaymentDrivers\StripePaymentDriver;
 use App\Utils\Ninja;
@@ -29,7 +30,7 @@ use Stripe\ApplePayDomain;
 use Stripe\Exception\ApiErrorException;
 use Stripe\PaymentIntent;
 
-class BrowserPay implements MethodInterface
+class BrowserPay implements MethodInterface, LivewireMethodInterface
 {
     protected StripePaymentDriver $stripe;
 
@@ -46,7 +47,7 @@ class BrowserPay implements MethodInterface
      * Authorization page for browser pay.
      *
      * @param array $data
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function authorizeView(array $data): RedirectResponse
     {
@@ -57,20 +58,21 @@ class BrowserPay implements MethodInterface
      * Handle the authorization for browser pay.
      *
      * @param Request $request
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function authorizeResponse(Request $request): RedirectResponse
     {
         return redirect()->route('client.payment_methods.index');
     }
 
-    public function paymentView(array $data): View
+
+    public function paymentData(array $data): array
     {
         $payment_intent_data = [
             'amount' => $this->stripe->convertToStripeAmount($data['total']['amount_with_fee'], $this->stripe->client->currency()->precision, $this->stripe->client->currency()),
             'currency' => $this->stripe->client->getCurrencyCode(),
             'customer' => $this->stripe->findOrCreateCustomer(),
-            'description' => $this->stripe->decodeUnicodeString(ctrans('texts.invoices').': '.collect($data['invoices'])->pluck('invoice_number')),
+            'description' => $this->stripe->getDescription(false),
             'metadata' => [
                 'payment_hash' => $this->stripe->payment_hash->hash,
                 'gateway_type_id' => GatewayType::APPLE_PAY,
@@ -93,6 +95,13 @@ class BrowserPay implements MethodInterface
             'requestPayerEmail' => true,
         ];
 
+        return $data;
+    }
+
+    public function paymentView(array $data): View
+    {
+        $data = $this->paymentData($data);
+
         return render('gateways.stripe.browser_pay.pay', $data);
     }
 
@@ -100,7 +109,7 @@ class BrowserPay implements MethodInterface
      * Handle payment response for browser pay.
      *
      * @param PaymentResponseRequest $request
-     * @return RedirectResponse|App\PaymentDrivers\Stripe\never
+     * @return \Illuminate\Http\RedirectResponse|App\PaymentDrivers\Stripe\never
      */
     public function paymentResponse(PaymentResponseRequest $request)
     {
@@ -120,14 +129,14 @@ class BrowserPay implements MethodInterface
     /**
      * Handle successful payment for browser pay.
      *
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     protected function processSuccessfulPayment()
     {
         $gateway_response = $this->stripe->payment_hash->data->gateway_response;
         $payment_intent = $this->stripe->payment_hash->data->payment_intent;
 
-        $this->stripe->logSuccessfulGatewayResponse(['response' => $gateway_response, 'data' => $this->stripe->payment_hash], SystemLog::TYPE_STRIPE);
+        $this->stripe->logSuccessfulGatewayResponse(['response' => $gateway_response, 'data' => $this->stripe->payment_hash->data], SystemLog::TYPE_STRIPE);
 
         $payment_method = $this->stripe->getStripePaymentMethod($gateway_response->payment_method);
 
@@ -135,7 +144,7 @@ class BrowserPay implements MethodInterface
             'payment_method' => $gateway_response->payment_method,
             'payment_type' => PaymentType::parseCardType(strtolower($payment_method->card->brand)),
             'amount' => $this->stripe->convertFromStripeAmount($gateway_response->amount, $this->stripe->client->currency()->precision, $this->stripe->client->currency()),
-            'transaction_reference' => optional($payment_intent->charges->data[0])->id,
+            'transaction_reference' => isset($payment_intent->latest_charge) ? $payment_intent->latest_charge : $payment_intent->charges->data[0]->id,
             'gateway_type_id' => GatewayType::APPLE_PAY,
         ];
 
@@ -229,6 +238,11 @@ class BrowserPay implements MethodInterface
             $domain = config('ninja.app_url');
         }
 
-        return str_replace('https://', '', $domain);
+        return str_replace(['https://', '/public'], '', $domain);
+    }
+
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.stripe.browser_pay.pay_livewire';
     }
 }

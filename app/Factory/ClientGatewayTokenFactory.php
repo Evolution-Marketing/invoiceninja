@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,13 +12,12 @@
 namespace App\Factory;
 
 use App\Models\ClientGatewayToken;
-use Illuminate\Support\Str;
 
 class ClientGatewayTokenFactory
 {
-    public static function create(int $company_id) :ClientGatewayToken
+    public static function create(int $company_id): ClientGatewayToken
     {
-        $client_gateway_token = new ClientGatewayToken;
+        $client_gateway_token = new ClientGatewayToken();
         $client_gateway_token->company_id = $company_id;
         $client_gateway_token->is_default = false;
         $client_gateway_token->meta = '';

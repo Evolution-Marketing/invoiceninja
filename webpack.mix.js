@@ -23,6 +23,14 @@ mix.js("resources/js/app.js", "public/js")
         "public/js/clients/payments/stripe-ach.js"
     )
     .js(
+        "resources/js/clients/payments/stripe-klarna.js",
+        "public/js/clients/payments/stripe-klarna.js"
+    )
+    .js(
+        "resources/js/clients/payments/stripe-bacs.js",
+        "public/js/clients/payments/stripe-bacs.js"
+    )
+    .js(
         "resources/js/clients/invoices/action-selectors.js",
         "public/js/clients/invoices/action-selectors.js"
     )

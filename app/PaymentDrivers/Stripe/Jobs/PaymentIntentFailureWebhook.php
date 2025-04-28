@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,16 +12,10 @@
 namespace App\PaymentDrivers\Stripe\Jobs;
 
 use App\Jobs\Mail\PaymentFailedMailer;
-use App\Jobs\Util\SystemLogger;
 use App\Libraries\MultiDB;
 use App\Models\Company;
-use App\Models\CompanyGateway;
-use App\Models\GatewayType;
-use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentHash;
-use App\Models\PaymentType;
-use App\Models\SystemLog;
 use App\PaymentDrivers\Stripe\Utilities;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +25,11 @@ use Illuminate\Queue\SerializesModels;
 
 class PaymentIntentFailureWebhook implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, Utilities;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use Utilities;
 
     public $tries = 1; //number of retries
 
@@ -54,25 +52,35 @@ class PaymentIntentFailureWebhook implements ShouldQueue
 
     public function handle()
     {
-        MultiDB::findAndSetDbByCompanyKey($this->company_key);
+        nlog("payment intent failed");
 
-        $company = Company::where('company_key', $this->company_key)->first();
+        MultiDB::findAndSetDbByCompanyKey($this->company_key);
+        nlog($this->stripe_request);
+
+        $company = Company::query()->where('company_key', $this->company_key)->first();
 
         foreach ($this->stripe_request as $transaction) {
-            if (array_key_exists('payment_intent', $transaction)) {
-                $payment = Payment::query()
-                        ->where('company_id', $company->id)
-                        ->where(function ($query) use ($transaction) {
-                            $query->where('transaction_reference', $transaction['payment_intent'])
-                                  ->orWhere('transaction_reference', $transaction['id']);
-                        })
-                        ->first();
-            } else {
-                $payment = Payment::query()
-                        ->where('company_id', $company->id)
-                        ->where('transaction_reference', $transaction['id'])
-                        ->first();
-            }
+
+            nlog($transaction);
+
+            $payment = Payment::query()
+                ->where('company_id', $company->id)
+                ->where(function ($query) use ($transaction) {
+
+                    if (isset($transaction['payment_intent'])) {
+                        $query->where('transaction_reference', $transaction['payment_intent']);
+                    }
+
+                    if (isset($transaction['payment_intent']) && isset($transaction['id'])) {
+                        $query->orWhere('transaction_reference', $transaction['id']);
+                    }
+
+                    if (!isset($transaction['payment_intent']) && isset($transaction['id'])) {
+                        $query->where('transaction_reference', $transaction['id']);
+                    }
+
+                })
+                ->first();
 
             if ($payment) {
                 $client = $payment->client;
@@ -84,7 +92,7 @@ class PaymentIntentFailureWebhook implements ShouldQueue
                 $payment->status_id = Payment::STATUS_FAILED;
                 $payment->save();
 
-                $payment_hash = PaymentHash::where('payment_id', $payment->id)->first();
+                $payment_hash = PaymentHash::query()->where('payment_id', $payment->id)->first();
 
                 if ($payment_hash) {
                     $error = ctrans('texts.client_payment_failure_body', [
@@ -99,11 +107,11 @@ class PaymentIntentFailureWebhook implements ShouldQueue
                 }
 
                 PaymentFailedMailer::dispatch(
-                        $payment_hash,
-                        $client->company,
-                        $client,
-                        $error
-                    );
+                    $payment_hash,
+                    $client->company,
+                    $client,
+                    $error
+                );
             }
         }
     }

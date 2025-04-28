@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -39,7 +39,7 @@ class UserRepository extends BaseRepository
      * @param bool $unset_company_user
      * @return \App\Models\User user Object
      */
-    public function save(array $data, User $user, $unset_company_user = false)
+    public function save(array $data, User $user, $unset_company_user = false, $is_migrating = false)
     {
         $details = $data;
 
@@ -56,15 +56,11 @@ class UserRepository extends BaseRepository
         $company = auth()->user()->company();
         $account = $company->account;
 
-        /* If hosted and Enterprise we need to increment the num_users field on the accounts table*/
-        // 05-08-2022 This is an error, the num_users should _never_ increment
-        // if (! $user->id && $account->isEnterpriseClient()) {
-        //     $account->num_users++;
-        //     $account->save();
-        // }
-        if(array_key_exists('oauth_provider_id', $details))
-            unset($details['oauth_provider_id']);
-        
+        if (request()->has('validated_phone')) {
+            $details['phone'] = request()->input('validated_phone');
+            $user->verified_phone_number = false;
+        }
+
         $user->fill($details);
 
         //allow users to change only their passwords - not others!
@@ -72,11 +68,16 @@ class UserRepository extends BaseRepository
             $user->password = Hash::make($data['password']);
         }
 
-        if (! $user->confirmation_code) {
+        if (! $user->confirmation_code && !$is_migrating) {
             $user->confirmation_code = $this->createDbHash($company->db);
         }
 
-        $user->account_id = $account->id;
+        //@18-10-2024 - ensure no cross account linkage.
+        if (is_numeric($user->account_id) && $user->account_id != $account->id) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Illegal operation encountered for {$user->hashed_id}", 401);
+        }
+
+        $user->account_id = $account->id;//@todo we should never change the account_id if it is set at this point.
 
         if (strlen($user->password) >= 1) {
             $user->has_password = true;
@@ -85,7 +86,7 @@ class UserRepository extends BaseRepository
         $user->save();
 
         if (isset($data['company_user'])) {
-            $cu = CompanyUser::whereUserId($user->id)->whereCompanyId($company->id)->withTrashed()->first();
+            $cu = CompanyUser::query()->whereUserId($user->id)->whereCompanyId($company->id)->withTrashed()->first();
 
             /*No company user exists - attach the user*/
             if (! $cu) {
@@ -100,13 +101,12 @@ class UserRepository extends BaseRepository
                     $cu->save();
 
                     //05-08-2022
-                    if($cu->tokens()->count() == 0){
+                    if ($cu->tokens()->count() == 0) {
                         (new CreateCompanyToken($cu->company, $cu->user, 'restored_user'))->handle();
                     }
-
                 } else {
-                    $cu->notifications = $data['company_user']['notifications'];
-                    $cu->settings = $data['company_user']['settings'];
+                    $cu->notifications = $data['company_user']['notifications'] ?? '';
+                    $cu->settings = $data['company_user']['settings'] ?? '';
                     $cu->save();
                 }
             }
@@ -118,12 +118,14 @@ class UserRepository extends BaseRepository
         }
         $user->restore();
 
+        $this->verifyCorrectCompanySizeForPermissions($user);
+
         return $user->fresh();
     }
 
     public function destroy(array $data, User $user)
     {
-        if ($user->isOwner()) {
+        if ($user->hasOwnerFlag()) {
             return $user;
         }
 
@@ -132,7 +134,7 @@ class UserRepository extends BaseRepository
 
             $company = auth()->user()->company();
 
-            $cu = CompanyUser::whereUserId($user->id)
+            $cu = CompanyUser::query()->whereUserId($user->id)
                              ->whereCompanyId($company->id)
                              ->first();
 
@@ -140,7 +142,7 @@ class UserRepository extends BaseRepository
             $cu->forceDelete();
         }
 
-        event(new UserWasDeleted($user, $company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
+        event(new UserWasDeleted($user, auth()->user(), auth()->user()->company(), Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
 
         $user->delete();
 
@@ -154,7 +156,7 @@ class UserRepository extends BaseRepository
     {
         $company = auth()->user()->company();
 
-        $cu = CompanyUser::whereUserId($user->id)
+        $cu = CompanyUser::query()->whereUserId($user->id)
                          ->whereCompanyId($company->id)
                          ->first();
 
@@ -193,7 +195,7 @@ class UserRepository extends BaseRepository
         }
 
         if (Ninja::isHosted()) {
-            $count = User::where('account_id', auth()->user()->account_id)->count();
+            $count = User::query()->where('account_id', auth()->user()->account_id)->count();
             if ($count >= auth()->user()->account->num_users) {
                 return;
             }
@@ -209,7 +211,34 @@ class UserRepository extends BaseRepository
                          ->first();
 
         $cu->restore();
+        $cu->tokens()->restore();
 
         event(new UserWasRestored($user, auth()->user(), auth()->user()->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
+    }
+
+
+    /**
+     * If we have multiple users in the system,
+     * and there are some that are not admins,
+     * we force all companies to large to ensure
+     * the queries are appropriate for all users
+     *
+     * @param  User   $user
+     * @return void
+     */
+    private function verifyCorrectCompanySizeForPermissions(User $user): void
+    {
+        if (Ninja::isSelfHost() || (Ninja::isHosted() && $user->account->isEnterpriseClient())) {
+            $user->account()
+               ->whereHas('companies', function ($query) {
+                   $query->where('is_large', 0);
+               })
+               ->whereHas('company_users', function ($query) {
+                   $query->where('is_admin', 0);
+               })
+               ->cursor()->each(function ($account) {
+                   $account->companies()->update(['is_large' => true]);
+               });
+        }
     }
 }

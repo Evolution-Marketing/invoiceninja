@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -30,7 +30,7 @@ class SetInviteDb
     {
         $error = [
             'message' => 'I could not find the database for this object.',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
         /*
          * Use the host name to set the active DB
@@ -53,8 +53,6 @@ class SetInviteDb
 
         /* Try and determine the DB from the invitation key STRING*/
         if (config('ninja.db.multi_db_enabled')) {
-
-            // nlog("/ Try and determine the DB from the invitation key /");
 
             $hashids = new Hashids(config('ninja.hash_salt'), 10);
             $segments = explode('-', $request->route('invitation_key'));

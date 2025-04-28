@@ -17,6 +17,8 @@
     <meta name="pi-client-secret" content="{{ $pi_client_secret }}">
 
     <meta name="translation-name-required" content="{{ ctrans('texts.missing_account_holder_name') }}">
+
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -33,5 +35,5 @@
 
 @push('footer')
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-bancontact.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-bancontact.js')
 @endpush

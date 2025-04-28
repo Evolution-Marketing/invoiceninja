@@ -4,31 +4,35 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
+use App\Models\Account;
+use App\Models\Invoice;
+use App\Models\Project;
+use Illuminate\Http\Response;
 use App\Factory\ProjectFactory;
 use App\Filters\ProjectFilters;
-use App\Http\Requests\Project\CreateProjectRequest;
-use App\Http\Requests\Project\DestroyProjectRequest;
+use App\Utils\Traits\MakesHash;
+use App\Utils\Traits\SavesDocuments;
+use App\Utils\Traits\GeneratesCounter;
+use App\Repositories\ProjectRepository;
+use App\Transformers\ProjectTransformer;
+use App\Services\Template\TemplateAction;
+use App\Http\Requests\Project\BulkProjectRequest;
 use App\Http\Requests\Project\EditProjectRequest;
 use App\Http\Requests\Project\ShowProjectRequest;
 use App\Http\Requests\Project\StoreProjectRequest;
+use App\Http\Requests\Project\CreateProjectRequest;
 use App\Http\Requests\Project\UpdateProjectRequest;
 use App\Http\Requests\Project\UploadProjectRequest;
-use App\Models\Account;
-use App\Models\Project;
-use App\Repositories\ProjectRepository;
-use App\Transformers\ProjectTransformer;
-use App\Utils\Traits\GeneratesCounter;
-use App\Utils\Traits\MakesHash;
-use App\Utils\Traits\SavesDocuments;
-use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use App\Http\Requests\Project\DestroyProjectRequest;
+use App\Http\Requests\Project\InvoiceProjectRequest;
+use App\Transformers\InvoiceTransformer;
 
 /**
  * Class ProjectController.
@@ -63,8 +67,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Gets a list of projects",
      *      description="Lists projects",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -88,7 +91,7 @@ class ProjectController extends BaseController
      *       ),
      *     )
      * @param ProjectFilters $filters
-     * @return Response|mixed
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function index(ProjectFilters $filters)
     {
@@ -102,7 +105,7 @@ class ProjectController extends BaseController
      *
      * @param ShowProjectRequest $request
      * @param Project $project
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -111,8 +114,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Shows a project",
      *      description="Displays a project by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -157,7 +159,7 @@ class ProjectController extends BaseController
      *
      * @param EditProjectRequest $request
      * @param Project $project
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -166,8 +168,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Shows a project for editting",
      *      description="Displays a project by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -212,7 +213,7 @@ class ProjectController extends BaseController
      *
      * @param UpdateProjectRequest $request
      * @param Project $project
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -222,8 +223,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Updates a project",
      *      description="Handles the updating of a project by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -266,11 +266,13 @@ class ProjectController extends BaseController
 
         $project->fill($request->all());
         $project->number = empty($project->number) ? $this->getNextProjectNumber($project) : $project->number;
-        $project->save();
+        $project->saveQuietly();
 
         if ($request->has('documents')) {
-            $this->saveDocuments($request->input('documents'), $project);
+            $this->saveDocuments($request->input('documents'), $project, $request->input('is_public', true));
         }
+
+        event('eloquent.updated: App\Models\Project', $project);
 
         return $this->itemResponse($project->fresh());
     }
@@ -279,7 +281,7 @@ class ProjectController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateProjectRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -289,8 +291,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Gets a new blank project object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -316,7 +317,10 @@ class ProjectController extends BaseController
      */
     public function create(CreateProjectRequest $request)
     {
-        $project = ProjectFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $project = ProjectFactory::create($user->company()->id, $user->id);
 
         return $this->itemResponse($project);
     }
@@ -325,7 +329,7 @@ class ProjectController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreProjectRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -335,8 +339,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Adds a project",
      *      description="Adds an project to a company",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -362,18 +365,23 @@ class ProjectController extends BaseController
      */
     public function store(StoreProjectRequest $request)
     {
-        $project = ProjectFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $project = ProjectFactory::create($user->company()->id, $user->id);
         $project->fill($request->all());
-        $project->save();
+        $project->saveQuietly();
 
         if (empty($project->number)) {
             $project->number = $this->getNextProjectNumber($project);
-            $project->save();
+            $project->saveQuietly();
         }
 
         if ($request->has('documents')) {
-            $this->saveDocuments($request->input('documents'), $project);
+            $this->saveDocuments($request->input('documents'), $project, $request->input('is_public', true));
         }
+
+        event('eloquent.created: App\Models\Project', $project);
 
         return $this->itemResponse($project->fresh());
     }
@@ -383,7 +391,7 @@ class ProjectController extends BaseController
      *
      * @param DestroyProjectRequest $request
      * @param Project $project
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -393,8 +401,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Deletes a project",
      *      description="Handles the deletion of a project by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -441,7 +448,7 @@ class ProjectController extends BaseController
     /**
      * Perform bulk actions on the list view.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Post(
@@ -450,8 +457,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Performs bulk actions on an array of projects",
      *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
      *      @OA\RequestBody(
@@ -489,16 +495,44 @@ class ProjectController extends BaseController
      *       ),
      *     )
      */
-    public function bulk()
+    public function bulk(BulkProjectRequest $request)
     {
-        $action = request()->input('action');
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-        $ids = request()->input('ids');
+        $action = $request->input('action');
 
-        $projects = Project::withTrashed()->find($this->transformKeys($ids));
+        $ids = $request->input('ids');
 
-        $projects->each(function ($project, $key) use ($action) {
-            if (auth()->user()->can('edit', $project)) {
+        $projects = Project::withTrashed()->whereIn('id', $this->transformKeys($ids))->company()->get();
+
+        if($action == 'invoice' && $user->can('edit', $projects->first())) {
+           $invoice = $this->project_repo->invoice($projects);
+           $this->entity_transformer = InvoiceTransformer::class;
+           $this->entity_type = Invoice::class;
+           return $this->itemResponse($invoice);
+        }
+
+        if ($action == 'template' && $user->can('view', $projects->first())) {
+
+            $hash_or_response = $request->boolean('send_email') ? 'email sent' : \Illuminate\Support\Str::uuid();
+
+            TemplateAction::dispatch(
+                $projects->pluck('hashed_id')->toArray(),
+                $request->template_id,
+                Project::class,
+                $user->id,
+                $user->company(),
+                $user->company()->db,
+                $hash_or_response,
+                $request->boolean('send_email')
+            );
+
+            return response()->json(['message' => $hash_or_response], 200);
+        }
+
+        $projects->each(function ($project) use ($action, $user) {
+            if ($user->can('edit', $project)) {
                 $this->project_repo->{$action}($project);
             }
         });
@@ -509,11 +543,9 @@ class ProjectController extends BaseController
     /**
      * Update the specified resource in storage.
      *
-     * @param UploadProductRequest $request
-     * @param Product $project
-     * @return Response
-     *
-     *
+     * @param UploadProjectRequest $request
+     * @param Project $project
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      * @OA\Put(
      *      path="/api/v1/projects/{id}/upload",
@@ -521,8 +553,7 @@ class ProjectController extends BaseController
      *      tags={"projects"},
      *      summary="Uploads a document to a project",
      *      description="Handles the uploading of a document to a project",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -564,9 +595,19 @@ class ProjectController extends BaseController
         }
 
         if ($request->has('documents')) {
-            $this->saveDocuments($request->file('documents'), $project);
+            $this->saveDocuments($request->file('documents'), $project, $request->input('is_public', true));
         }
 
         return $this->itemResponse($project->fresh());
+    }
+
+    public function invoice(InvoiceProjectRequest $request, Project $project)
+    {
+        $this->entity_transformer = InvoiceTransformer::class;
+        $this->entity_type = Invoice::class;
+
+        $invoice = $this->project_repo->invoice($project);
+
+        return $this->itemResponse($invoice);
     }
 }

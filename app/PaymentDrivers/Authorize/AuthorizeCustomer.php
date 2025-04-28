@@ -5,14 +5,13 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers\Authorize;
 
-use App\Exceptions\GenericPaymentDriverFailure;
 use App\Factory\ClientContactFactory;
 use App\Factory\ClientFactory;
 use App\Models\Client;
@@ -21,11 +20,8 @@ use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\PaymentDrivers\AuthorizePaymentDriver;
 use Illuminate\Support\Facades\Cache;
-use net\authorize\api\contract\v1\CreateCustomerProfileRequest;
-use net\authorize\api\contract\v1\CustomerProfileType;
 use net\authorize\api\contract\v1\GetCustomerProfileIdsRequest;
 use net\authorize\api\contract\v1\GetCustomerProfileRequest;
-use net\authorize\api\controller\CreateCustomerProfileController;
 use net\authorize\api\controller\GetCustomerProfileController;
 use net\authorize\api\controller\GetCustomerProfileIdsController;
 
@@ -43,7 +39,6 @@ class AuthorizeCustomer
 
     private function getCustomerProfileIds()
     {
-
         // Get all existing customer profile ID's
         $request = new GetCustomerProfileIdsRequest();
         $request->setMerchantAuthentication($this->authorize->merchant_authentication);
@@ -104,11 +99,11 @@ class AuthorizeCustomer
                 $client = $client_gateway_token->client;
             } elseif ($client_contact = ClientContact::where('company_id', $company->id)->where('email', $profile['email'])->first()) {
                 $client = $client_contact->client;
-            // nlog("found client through contact");
+                // nlog("found client through contact");
             } else {
                 // nlog("creating client");
 
-                $first_payment_profile = $profile['payment_profiles'][0];
+                $first_payment_profile = &$profile['payment_profiles'][0];
 
                 if (! $first_payment_profile) {
                     continue;
@@ -120,7 +115,7 @@ class AuthorizeCustomer
                 $client->city = $billTo->getCity();
                 $client->state = $billTo->getState();
                 $client->postal_code = $billTo->getZip();
-                $client->country_id = $billTo->getCountry() ? $this->getCountryCode($billTo->getCountry()) : $company->settings->country_id;
+                $client->country_id = $billTo->getCountry() && strlen($billTo->getCountry()) <= 3 ? $this->getCountryCode($billTo->getCountry()) : $company->settings->country_id;
                 $client->save();
 
                 $client_contact = ClientContactFactory::create($company->id, $user->id);
@@ -144,9 +139,9 @@ class AuthorizeCustomer
                         continue;
                     }
 
-//                    $expiry = $payment_profile->getPayment()->getCreditCard()->getExpirationDate();
+                    //                    $expiry = $payment_profile->getPayment()->getCreditCard()->getExpirationDate();
 
-                    $payment_meta = new \stdClass;
+                    $payment_meta = new \stdClass();
                     $payment_meta->exp_month = 'xx';
                     $payment_meta->exp_year = 'xx';
                     $payment_meta->brand = (string) $payment_profile->getPayment()->getCreditCard()->getCardType();
@@ -166,11 +161,13 @@ class AuthorizeCustomer
 
     private function getCountryCode($country_code)
     {
-        $countries = Cache::get('countries');
 
-        $country = $countries->filter(function ($item) use ($country_code) {
+        /** @var \Illuminate\Support\Collection<\App\Models\Country> */
+        $countries = app('countries');
+
+        $country = $countries->first(function ($item) use ($country_code) {
             return $item->iso_3166_2 == $country_code || $item->iso_3166_3 == $country_code;
-        })->first();
+        });
 
         return (string) $country->id;
     }

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,7 +15,7 @@ use App\Models\Expense;
 
 class ExpenseFactory
 {
-    public static function create(int $company_id, int $user_id) :Expense
+    public static function create(int $company_id, int $user_id): Expense
     {
         $expense = new Expense();
         $expense->user_id = $user_id;
@@ -28,7 +28,7 @@ class ExpenseFactory
         $expense->tax_rate2 = 0;
         $expense->tax_name3 = '';
         $expense->tax_rate3 = 0;
-        $expense->date = null;
+        $expense->date = now()->format('Y-m-d');
         $expense->payment_date = null;
         $expense->amount = 0;
         $expense->foreign_amount = 0;
@@ -42,6 +42,7 @@ class ExpenseFactory
         $expense->tax_amount1 = 0;
         $expense->tax_amount2 = 0;
         $expense->tax_amount3 = 0;
+        $expense->uses_inclusive_taxes = false;
 
         return $expense;
     }

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,15 +13,12 @@ namespace App\Http\Controllers;
 
 use App\Libraries\MultiDB;
 use App\Libraries\OAuth\Providers\Google;
-use App\Models\CompanyUser;
 use App\Models\User;
-use App\Transformers\CompanyUserTransformer;
 use App\Transformers\UserTransformer;
 use App\Utils\Traits\User\LoginCache;
 use Google_Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use Microsoft\Graph\Model;
 
 class ConnectedAccountController extends BaseController
@@ -41,7 +38,7 @@ class ConnectedAccountController extends BaseController
      * Connect an OAuth account to a regular email/password combination account
      *
      * @param Request $request
-     * @return User Refresh Feed.
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\Response
      *
      *
      * @OA\Post(
@@ -50,8 +47,7 @@ class ConnectedAccountController extends BaseController
      *      tags={"connected_account"},
      *      summary="Connect an oauth user to an existing user",
      *      description="Refreshes the dataset",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/include_static"),
@@ -94,47 +90,54 @@ class ConnectedAccountController extends BaseController
 
     private function handleMicrosoftOauth($request)
     {
-        nlog($request->all());
+        $access_token = false;
+        $access_token = $request->has('access_token') ? $request->input('access_token') : $request->input('accessToken');
 
-        if(!$request->has('access_token'))
+        if (!$access_token) {
             return response()->json(['message' => 'No access_token parameter found!'], 400);
+        }
 
         $graph = new \Microsoft\Graph\Graph();
-        $graph->setAccessToken($request->input('access_token'));
+        $graph->setAccessToken($access_token);
 
         $user = $graph->createRequest("GET", "/me")
                       ->setReturnType(Model\User::class)
                       ->execute();
 
-        if($user){
+        if ($user) {
+            $email = $user->getUserPrincipalName() ?? false;
 
-            $email = $user->getMail() ?: $user->getUserPrincipalName();
+            nlog("microsoft");
+            nlog($email);
 
-            if(auth()->user()->email != $email && MultiDB::checkUserEmailExists($email))
+            if (auth()->user()->email != $email && MultiDB::checkUserEmailExists($email)) {
                 return response()->json(['message' => ctrans('texts.email_already_register')], 400);
+            }
 
             $connected_account = [
                 'email' => $email,
                 'oauth_user_id' => $user->getId(),
                 'oauth_provider_id' => 'microsoft',
-                'email_verified_at' =>now()
+                'email_verified_at' => now()
             ];
 
-            auth()->user()->update($connected_account);
-            auth()->user()->email_verified_at = now();
-            auth()->user()->save();
-            
-            $this->setLoginCache(auth()->user());
-            
-            return $this->itemResponse(auth()->user());
 
+            /** @var \App\Models\User $user */
+            $user = auth()->user();
+
+            $user->update($connected_account);
+            $user->email_verified_at = now();
+            $user->save();
+
+            $this->setLoginCache(auth()->user());
+
+            return $this->itemResponse(auth()->user());
         }
 
         return response()
         ->json(['message' => ctrans('texts.invalid_credentials')], 401)
         ->header('X-App-Version', config('ninja.app_version'))
         ->header('X-Api-Version', config('ninja.minimum_client_version'));
-
     }
 
     private function handleGoogleOauth()
@@ -163,16 +166,19 @@ class ConnectedAccountController extends BaseController
                 'email' => $email,
                 'oauth_user_id' => $google->harvestSubField($user),
                 'oauth_provider_id' => 'google',
-                'email_verified_at' =>now(),
+                'email_verified_at' => now(),
             ];
 
-            auth()->user()->update($connected_account);
-            auth()->user()->email_verified_at = now();
-            auth()->user()->save();
+            /** @var \App\Models\User $logged_in_user */
+            $logged_in_user = auth()->user();
 
-            $this->setLoginCache(auth()->user());
+            $logged_in_user->update($connected_account);
+            $logged_in_user->email_verified_at = now();
+            $logged_in_user->save();
 
-            return $this->itemResponse(auth()->user());
+            $this->setLoginCache($logged_in_user);
+
+            return $this->itemResponse($logged_in_user);
         }
 
         return response()
@@ -205,23 +211,28 @@ class ConnectedAccountController extends BaseController
             $connected_account = [
                 'email' => $google->harvestEmail($user),
                 'oauth_user_id' => $google->harvestSubField($user),
-                'oauth_user_token' => $token,
-                'oauth_user_refresh_token' => $refresh_token,
+                // 'oauth_user_token' => $token,
+                // 'oauth_user_refresh_token' => $refresh_token,
                 'oauth_provider_id' => 'google',
-                'email_verified_at' =>now(),
+                // 'email_verified_at' =>now(),
             ];
 
-            if (auth()->user()->email != $google->harvestEmail($user)) {
+            /** @var \App\Models\User $logged_in_user */
+            $logged_in_user = auth()->user();
+
+            if ($logged_in_user->email != $google->harvestEmail($user)) {
                 return response()->json(['message' => 'Primary Email differs to OAuth email. Emails must match.'], 400);
             }
 
-            auth()->user()->update($connected_account);
-            auth()->user()->email_verified_at = now();
-            auth()->user()->save();
+            $logged_in_user->update($connected_account);
+            $logged_in_user->email_verified_at = now();
+            $logged_in_user->oauth_user_token = $token;
+            $logged_in_user->oauth_user_refresh_token = $refresh_token;
+            $logged_in_user->save();
 
-            $this->activateGmail(auth()->user());
+            $this->activateGmail($logged_in_user);
 
-            return $this->itemResponse(auth()->user());
+            return $this->itemResponse($logged_in_user);
         }
 
         return response()

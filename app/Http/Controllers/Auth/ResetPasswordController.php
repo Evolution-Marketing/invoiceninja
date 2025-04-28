@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -60,6 +60,7 @@ class ResetPasswordController extends Controller
 
         if (Ninja::isHosted()) {
             MultiDB::findAndSetDbByCompanyKey($request->session()->get('company_key'));
+            /** @var \App\Models\Company $company **/
             $company = Company::where('company_key', $request->session()->get('company_key'))->first();
         }
 
@@ -69,14 +70,15 @@ class ResetPasswordController extends Controller
             $account = Account::first();
         }
 
-        return $this->render('auth.passwords.reset', ['root' => 'themes', 'token' => $token, 'account' => $account]);
+
+        return $this->render('auth.passwords.reset', ['root' => 'themes', 'token' => $token, 'account' => $account, 'email' => $request->email]);
     }
 
     /**
      * Reset the given user's password.
      *
      * @param Request $request
-     * @return RedirectResponse|JsonResponse
+     * @return \Illuminate\Http\RedirectResponse | \Illuminate\Http\RedirectResponse|JsonResponse
      * @throws \Illuminate\Validation\ValidationException
      */
     public function reset(Request $request)
@@ -109,6 +111,34 @@ class ResetPasswordController extends Controller
     {
         auth()->logout();
 
+        if (request()->has('react') || request()->hasHeader('X-React')) {
+            return redirect(config('ninja.react_url').'/#/login');
+        }
+
         return redirect('/');
     }
+
+    /**
+     * Get the response for a successful password reset.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $response
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     */
+    protected function sendResetResponse(Request $request, $response)
+    {
+        if ($request->wantsJson()) {
+            return new JsonResponse(['message' => trans($response)], 200);
+        }
+
+        if ($request->hasHeader('X-REACT') || $request->has('react')) {
+            return redirect(config('ninja.react_url').'/#/login');
+        } else {
+            return redirect('/#/login');
+        }
+
+        // return redirect($this->redirectPath())
+        //                     ->with('status', trans($response));
+    }
+
 }

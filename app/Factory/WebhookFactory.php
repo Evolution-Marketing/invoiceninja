@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,9 +15,9 @@ use App\Models\Webhook;
 
 class WebhookFactory
 {
-    public static function create(int $company_id, int $user_id) :Webhook
+    public static function create(int $company_id, int $user_id): Webhook
     {
-        $webhook = new Webhook;
+        $webhook = new Webhook();
         $webhook->company_id = $company_id;
         $webhook->user_id = $user_id;
         $webhook->target_url = '';

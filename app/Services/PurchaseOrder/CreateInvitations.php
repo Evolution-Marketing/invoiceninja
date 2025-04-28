@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -41,6 +41,11 @@ class CreateInvitations extends AbstractService
 
     public function run()
     {
+
+        if (!$this->purchase_order->vendor) {
+            return $this->purchase_order;
+        }
+
         $contacts = $this->purchase_order->vendor->contacts()->get();
 
         if ($contacts->count() == 0) {
@@ -51,7 +56,7 @@ class CreateInvitations extends AbstractService
         }
 
         $contacts->each(function ($contact) {
-            $invitation = PurchaseOrderInvitation::where('company_id', $this->purchase_order->company_id)
+            $invitation = PurchaseOrderInvitation::query()->where('company_id', $this->purchase_order->company_id)
                 ->where('vendor_contact_id', $contact->id)
                 ->where('purchase_order_id', $this->purchase_order->id)
                 ->withTrashed()
@@ -78,7 +83,7 @@ class CreateInvitations extends AbstractService
             } else {
                 $contact = $contacts->first();
 
-                $invitation = PurchaseOrderInvitation::where('company_id', $this->purchase_order->company_id)
+                $invitation = PurchaseOrderInvitation::query()->where('company_id', $this->purchase_order->company_id)
                     ->where('vendor_contact_id', $contact->id)
                     ->where('purchase_order_id', $this->purchase_order->id)
                     ->withTrashed()

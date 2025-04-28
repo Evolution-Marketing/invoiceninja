@@ -52,7 +52,7 @@
     <div class="flex items-center justify-between mt-6">
         <div class="flex items-center">
             <span class="mr-2 text-sm hidden md:block">{{ ctrans('texts.per_page') }}</span>
-            <select wire:model="per_page" class="form-select py-1 text-sm">
+            <select wire:model.live="per_page" class="form-select py-1 text-sm">
                 <option>5</option>
                 <option selected>10</option>
                 <option>15</option>
@@ -78,11 +78,6 @@
                             </span>
                         </th>
                         <th class="px-6 py-3 border-b border-gray-200 bg-primary text-left text-xs leading-4 font-medium text-white uppercase tracking-wider">
-                            <span role="button" wire:click="sortBy('type')" class="cursor-pointer">
-                                {{ ctrans('texts.type') }}
-                            </span>
-                        </th>
-                        <th class="px-6 py-3 border-b border-gray-200 bg-primary text-left text-xs leading-4 font-medium text-white uppercase tracking-wider">
                             <span role="button" wire:click="sortBy('size')" class="cursor-pointer">
                                 {{ ctrans('texts.size') }}
                             </span>
@@ -99,12 +94,10 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
                                 <input type="checkbox" class="form-checkbox cursor-pointer" onchange="appendToElement('multiple-downloads', '{{ $document->hashed_id }}')" />
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
-                                {{ Illuminate\Support\Str::limit($document->name, 20) }}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500 truncate">
+                                {{ $document->name }}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
-                                {{ App\Models\Document::$types[$document->type]['mime'] }}
-                            </td>
+
                             <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
                                 {{ $document->size / 1000 }} kB
                             </td>

@@ -2,7 +2,7 @@
 /**
  * payment Ninja (https://paymentninja.com).
  *
- * @link https://github.com/paymentninja/paymentninja source repository
+ * @link https://github.com/invoiceninja/invoiceninja source repository
  *
  * @copyright Copyright (c) 2022. payment Ninja LLC (https://paymentninja.com)
  *
@@ -21,14 +21,11 @@ class PaymentService
 {
     use MakesHash;
 
-    private $payment;
-
-    public function __construct($payment)
+    public function __construct(public Payment $payment)
     {
-        $this->payment = $payment;
     }
 
-    public function manualPayment($invoice) :?Payment
+    public function manualPayment($invoice): ?Payment
     {
         /* Create Payment */
         $payment = PaymentFactory::create($invoice->company_id, $invoice->user_id);
@@ -72,7 +69,7 @@ class PaymentService
 
         $this->payment
              ->ledger()
-             ->updatePaymentBalance($this->payment->amount);
+             ->updatePaymentBalance($this->payment->amount, "PaymentService");
 
         $client->service()
             ->updateBalance($this->payment->amount)
@@ -82,17 +79,17 @@ class PaymentService
         return $this;
     }
 
-    public function refundPayment(array $data) :?Payment
+    public function refundPayment(array $data): ?Payment
     {
         return ((new RefundPayment($this->payment, $data)))->run();
     }
 
-    public function deletePayment() :?Payment
+    public function deletePayment($update_client_paid_to_date = true): ?Payment
     {
-        return (new DeletePayment($this->payment))->run();
+        return (new DeletePayment($this->payment, $update_client_paid_to_date))->run();
     }
 
-    public function updateInvoicePayment(PaymentHash $payment_hash) :?Payment
+    public function updateInvoicePayment(PaymentHash $payment_hash): ?Payment
     {
         return ((new UpdateInvoicePayment($this->payment, $payment_hash)))->run();
     }
@@ -139,6 +136,38 @@ class PaymentService
 
         return $this;
     }
+
+    public function applyCreditsToInvoice($invoice)
+    {
+        $amount = $invoice->amount;
+
+        $credits = $invoice->client
+                            ->service()
+                            ->getCredits();
+
+        foreach ($credits as $credit) {
+            //starting invoice balance
+            $invoice_balance = $invoice->balance;
+
+            //credit payment applied
+            $credit->service()->applyPayment($invoice, $amount, $this->payment);
+
+            //amount paid from invoice calculated
+            $remaining_balance = ($invoice_balance - $invoice->fresh()->balance);
+
+            //reduce the amount to be paid on the invoice from the NEXT credit
+            $amount -= $remaining_balance;
+
+            //break if the invoice is no longer PAYABLE OR there is no more amount to be applied
+            if (! $invoice->isPayable() || (int) $amount == 0) {
+                break;
+            }
+        }
+
+
+        return $this;
+    }
+
 
     public function save()
     {

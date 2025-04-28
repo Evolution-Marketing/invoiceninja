@@ -16,10 +16,10 @@
                 <dl>
                     <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                         <dt class="text-sm leading-5 font-medium text-gray-500">
-                            {{ ctrans('texts.start_date') }}
+                            {{ ctrans('texts.last_sent') }}
                         </dt>
                         <dd class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                            {{ $invoice->translateDate($invoice->start_date, $invoice->client->date_format(), $invoice->client->locale()) }}
+                            {{ $invoice->translateDate($invoice->last_sent_date, $invoice->client->date_format(), $invoice->client->locale()) }}
                         </dd>
                     </div>
                     <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
@@ -27,7 +27,7 @@
                             {{ ctrans('texts.next_send_date') }}
                         </dt>
                         <dd class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                            {{ $invoice->translateDate($invoice->next_send_date, $invoice->client->date_format(), $invoice->client->locale()) }}
+                            {{ $invoice->translateDate(\Carbon\Carbon::parse($invoice->next_send_date)->subSeconds($invoice->client->timezone_offset()), $invoice->client->date_format(), $invoice->client->locale()) }}
                         </dd>
                     </div>
                     <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
@@ -70,15 +70,38 @@
                     </div>
 
                     <div class="flex mt-4 space-x-2">
-                        @livewire('recurring-invoices.update-auto-billing', ['invoice' => $invoice])
+                        @livewire('recurring-invoices.update-auto-billing', ['db' => $invoice->company->db, 'invoice_id' => $invoice->id])
                     </div>
                 </div>
             </div>
         @endif
 
-        @if($invoice->subscription && $invoice->subscription?->allow_cancellation)
-        {{-- INV2-591 --}}
-        {{-- @if(false) --}}
+        <div class="mt-4 overflow-hidden bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 border-b border-gray-200 sm:px-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900">
+                {{ ctrans('texts.invoices') }}
+            </h3>
+        </div>
+        <div>
+            <dl>
+                @foreach($invoice->invoices as $inv)
+                    <div class="px-4 py-5 bg-white sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                        <dt class="text-sm font-medium leading-5 text-gray-500">
+                            {{ ctrans('texts.invoice_number') }}
+                        </dt>
+                        <div class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
+                            <a class="button-link text-primary"
+                                href="{{ route('client.invoice.show', ['invoice' => $inv->hashed_id])}}">
+                                {{ $inv->number }}
+                            </a>
+                            - {{ \App\Utils\Number::formatMoney($inv->amount, $invoice->client) }}
+                        </div>
+                    </div>
+                @endforeach
+            </dl>
+        </div>
+
+        @if($invoice->subscription && $invoice->subscription?->allow_cancellation && $invoice->status_id == 2)
         <div class="bg-white shadow sm:rounded-lg mt-4">
             <div class="px-4 py-5 sm:p-6">
                 <div class="sm:flex sm:items-start sm:justify-between">
@@ -94,7 +117,7 @@
                     </div>
                     <div class="mt-5 sm:mt-0 sm:ml-6 sm:flex-shrink-0 sm:flex sm:items-center">
                         <div class="inline-flex rounded-md shadow-sm" x-data="{ open: false }">
-                            <button class="button button-danger" translate @click="open = true">Request Cancellation
+                            <button class="button button-danger" translate @click="open = true">{{ ctrans('texts.request_cancellation') }}
                             </button>
                             @include('portal.ninja2020.recurring_invoices.includes.modals.cancellation')
                         </div>

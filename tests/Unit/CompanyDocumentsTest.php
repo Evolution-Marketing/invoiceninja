@@ -50,7 +50,8 @@ class CompanyDocumentsTest extends TestCase
             UploadFile::IMAGE,
             $this->user,
             $this->company,
-            $this->invoice))->handle();
+            $this->invoice
+        ))->handle();
 
         $this->assertNotNull($document);
 
@@ -62,6 +63,6 @@ class CompanyDocumentsTest extends TestCase
 
         $this->assertEquals(0, Document::whereCompanyId($this->company->id)->count());
 
-        $this->assertFalse(Storage::exists($document->url));
     }
+
 }

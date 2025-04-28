@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -20,16 +20,13 @@ use Illuminate\Support\Facades\Storage;
 
 class UnlinkFile implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
-    protected $file_path;
-
-    protected $disk;
-
-    public function __construct(string $disk, string $file_path)
+    public function __construct(protected string $disk = '', protected ?string $file_path = '')
     {
-        $this->file_path = $file_path;
-        $this->disk = $disk;
     }
 
     /**
@@ -44,6 +41,15 @@ class UnlinkFile implements ShouldQueue
             return;
         }
 
-        Storage::disk($this->disk)->delete($this->file_path);
+
+        if (!$this->file_path) {
+            return;
+        }
+
+        try {
+            Storage::disk($this->disk)->delete($this->file_path);
+        } catch (\Exception $e) {
+
+        }
     }
 }

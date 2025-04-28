@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -25,14 +25,14 @@ class UserTransformer extends EntityTransformer
     /**
      * @var array
      */
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         //'company_user'
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'companies',
         'company_users',
         'company_user',
@@ -40,6 +40,11 @@ class UserTransformer extends EntityTransformer
 
     public function transform(User $user)
     {
+        $ref = new \stdClass();
+        $ref->free = 0;
+        $ref->pro = 0;
+        $ref->enterprise = 0;
+
         return [
             'id' => $this->encodePrimaryKey($user->id),
             'first_name' => $user->first_name ?: '',
@@ -62,6 +67,11 @@ class UserTransformer extends EntityTransformer
             'google_2fa_secret' => (bool) $user->google_2fa_secret,
             'has_password' => (bool) empty($user->password) ? false : true,
             'oauth_user_token' => empty($user->oauth_user_token) ? '' : '***',
+            'verified_phone_number' => (bool) $user->verified_phone_number,
+            'language_id' => (string) $user->language_id ?: '',
+            'user_logged_in_notification' => (bool) $user->user_logged_in_notification,
+            'referral_code' => (string) $user->referral_code,
+            'referral_meta' => $user->referral_meta ? (object)$user->referral_meta : $ref,
         ];
     }
 
@@ -93,16 +103,24 @@ class UserTransformer extends EntityTransformer
         return $this->includeCollection($user->company_users, $transformer, CompanyUser::class);
     }
 
+    /**
+     *
+     * @param User $user
+     */
     public function includeCompanyUser(User $user)
     {
         if (! $user->company_id && request()->header('X-API-TOKEN')) {
-            $company_token = CompanyToken::where('token', request()->header('X-API-TOKEN'))->first();
+            $company_token = CompanyToken::query()->where('token', request()->header('X-API-TOKEN'))->first();
             $user->company_id = $company_token->company_id;
         }
 
         $transformer = new CompanyUserTransformer($this->serializer);
 
-        $cu = $user->company_users()->whereCompanyId($user->company_id)->first();
+        $cu = $user->company_users()->where('company_id', $user->company_id)->first();
+
+        if (!$cu) {
+            return null;
+        }
 
         return $this->includeItem($cu, $transformer, CompanyUser::class);
     }

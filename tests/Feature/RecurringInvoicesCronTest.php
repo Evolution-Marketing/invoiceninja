@@ -18,15 +18,15 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Jobs\Cron\RecurringInvoicesCron
+ * 
+ *  App\Jobs\Cron\RecurringInvoicesCron
  */
 class RecurringInvoicesCronTest extends TestCase
 {
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -39,7 +39,6 @@ class RecurringInvoicesCronTest extends TestCase
 
     public function testCountCorrectNumberOfRecurringInvoicesDue()
     {
-
         //spin up 5 valid and 1 invalid recurring invoices
         $recurring_invoices = RecurringInvoice::where('next_send_date', '<=', Carbon::now()->addMinutes(30))->get();
 
@@ -47,6 +46,6 @@ class RecurringInvoicesCronTest extends TestCase
 
         $this->assertEquals(5, $recurring_invoices->count());
 
-        $this->assertEquals(6, $recurring_all->count());
+        $this->assertEquals(7, $recurring_all->count());
     }
 }

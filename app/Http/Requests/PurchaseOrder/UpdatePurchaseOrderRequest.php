@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -28,9 +28,12 @@ class UpdatePurchaseOrderRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('edit', $this->purchase_order);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('edit', $this->purchase_order);
     }
 
     /**
@@ -40,15 +43,46 @@ class UpdatePurchaseOrderRequest extends Request
      */
     public function rules()
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $rules = [];
 
-        if ($this->number) {
-            $rules['number'] = Rule::unique('purchase_orders')->where('company_id', auth()->user()->company()->id)->ignore($this->purchase_order->id);
-        }
+        $rules['number'] = ['bail', 'sometimes', 'nullable', Rule::unique('purchase_orders')->where('company_id', $user->company()->id)->ignore($this->purchase_order->id)];
+        $rules['vendor_id'] = ['bail', 'sometimes', Rule::in([$this->purchase_order->vendor_id])];
 
         $rules['line_items'] = 'array';
-        $rules['discount'] = 'sometimes|numeric';
+
+        $rules['invitations'] = 'sometimes|bail|array';
+        $rules['invitations.*.vendor_contact_id'] = 'bail|required|distinct';
+
+        $rules['discount'] = 'sometimes|numeric|max:99999999999999';
         $rules['is_amount_discount'] = ['boolean'];
+
+        if ($this->file('documents') && is_array($this->file('documents'))) {
+            $rules['documents.*'] = $this->fileValidation();
+        } elseif ($this->file('documents')) {
+            $rules['documents'] = $this->fileValidation();
+        } else {
+            $rules['documents'] = 'bail|sometimes|array';
+        }
+
+        if ($this->file('file') && is_array($this->file('file'))) {
+            $rules['file.*'] = $this->fileValidation();
+        } elseif ($this->file('file')) {
+            $rules['file'] = $this->fileValidation();
+        }
+
+        $rules['status_id'] = 'sometimes|integer|in:1,2,3,4,5';
+        $rules['exchange_rate'] = 'bail|sometimes|numeric';
+        $rules['amount'] = ['sometimes', 'bail', 'numeric', 'max:99999999999999'];
+       
+        $rules['custom_surcharge1'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge2'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge3'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge4'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+
+        $rules['location_id'] = ['nullable', 'sometimes','bail', Rule::exists('locations', 'id')->where('company_id', $user->company()->id)->where('vendor_id', $this->purchase_order->vendor_id)];
 
         return $rules;
     }
@@ -61,8 +95,30 @@ class UpdatePurchaseOrderRequest extends Request
 
         $input['id'] = $this->purchase_order->id;
 
+        if (isset($input['partial']) && $input['partial'] == 0) {
+            $input['partial_due_date'] = null;
+        }
+
         if (isset($input['line_items']) && is_array($input['line_items'])) {
             $input['line_items'] = isset($input['line_items']) ? $this->cleanItems($input['line_items']) : [];
+            $input['amount'] = $this->entityTotalAmount($input['line_items']);
+        }
+
+        if (array_key_exists('exchange_rate', $input) && is_null($input['exchange_rate'])) {
+            $input['exchange_rate'] = 1;
+        }
+
+        if (isset($input['footer']) && $this->hasHeader('X-REACT')) {
+            $input['footer'] = str_replace("\n", "", $input['footer']);
+        }
+        if (isset($input['public_notes']) && $this->hasHeader('X-REACT')) {
+            $input['public_notes'] = str_replace("\n", "", $input['public_notes']);
+        }
+        if (isset($input['private_notes']) && $this->hasHeader('X-REACT')) {
+            $input['private_notes'] = str_replace("\n", "", $input['private_notes']);
+        }
+        if (isset($input['terms']) && $this->hasHeader('X-REACT')) {
+            $input['terms'] = str_replace("\n", "", $input['terms']);
         }
 
         $this->replace($input);

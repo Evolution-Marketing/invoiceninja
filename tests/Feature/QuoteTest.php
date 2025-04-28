@@ -11,6 +11,8 @@
 
 namespace Tests\Feature;
 
+use App\DataMapper\ClientSettings;
+use App\Exceptions\QuoteConversion;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\Project;
@@ -24,8 +26,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Http\Controllers\QuoteController
+ * 
+ *  App\Http\Controllers\QuoteController
  */
 class QuoteTest extends TestCase
 {
@@ -33,7 +35,9 @@ class QuoteTest extends TestCase
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    public $faker;
+
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -48,8 +52,252 @@ class QuoteTest extends TestCase
         $this->withoutMiddleware(
             ThrottleRequests::class
         );
+
     }
 
+    public function testQuoteDueDateInjectionValidationLayer()
+    {
+
+        $data = [
+            'client_id' => $this->client->hashed_id,
+            'partial_due_date' => now()->format('Y-m-d'),
+            'partial' => 1,
+            'amount' => 20,
+        ];
+
+        $response = $this->withHeaders([
+                    'X-API-SECRET' => config('ninja.api_secret'),
+                    'X-API-TOKEN' => $this->token,
+                ])->postJson('/api/v1/quotes', $data);
+
+        $arr = $response->json();
+        // nlog($arr);
+
+        $this->assertNotEmpty($arr['data']['due_date']);
+
+    }
+
+    public function testNullDueDates()
+    {
+
+        $data = [
+            'client_id' => $this->client->hashed_id,
+            'due_date' => '',
+        ];
+
+        $response = $this->withHeaders([
+                    'X-API-SECRET' => config('ninja.api_secret'),
+                    'X-API-TOKEN' => $this->token,
+                ])->postJson('/api/v1/quotes', $data);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertEmpty($arr['data']['due_date']);
+
+        $response = $this->withHeaders([
+                            'X-API-SECRET' => config('ninja.api_secret'),
+                            'X-API-TOKEN' => $this->token,
+                        ])->putJson('/api/v1/quotes/'.$arr['data']['id'], $arr['data']);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertEmpty($arr['data']['due_date']);
+
+    }
+
+
+    public function testNonNullDueDates()
+    {
+
+        $data = [
+            'client_id' => $this->client->hashed_id,
+            'due_date' => now()->addDays(10),
+        ];
+
+        $response = $this->withHeaders([
+                    'X-API-SECRET' => config('ninja.api_secret'),
+                    'X-API-TOKEN' => $this->token,
+                ])->postJson('/api/v1/quotes', $data);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertNotEmpty($arr['data']['due_date']);
+
+        $response = $this->withHeaders([
+                            'X-API-SECRET' => config('ninja.api_secret'),
+                            'X-API-TOKEN' => $this->token,
+                        ])->putJson('/api/v1/quotes/'.$arr['data']['id'], $arr['data']);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertNotEmpty($arr['data']['due_date']);
+
+    }
+
+    public function testPartialDueDates()
+    {
+
+        $data = [
+            'client_id' => $this->client->hashed_id,
+            'due_date' => now()->addDay()->format('Y-m-d'),
+        ];
+
+        $response = $this->withHeaders([
+                    'X-API-SECRET' => config('ninja.api_secret'),
+                    'X-API-TOKEN' => $this->token,
+                ])->postJson('/api/v1/quotes', $data);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertNotNull($arr['data']['due_date']);
+        $this->assertEmpty($arr['data']['partial_due_date']);
+
+        $data = [
+            'client_id' => $this->client->hashed_id,
+            'due_date' => now()->addDay()->format('Y-m-d'),
+            'partial' => 1,
+            'partial_due_date' => now()->format('Y-m-d'),
+            'amount' => 20,
+        ];
+
+        $response = $this->withHeaders([
+                    'X-API-SECRET' => config('ninja.api_secret'),
+                    'X-API-TOKEN' => $this->token,
+                ])->postJson('/api/v1/quotes', $data);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertEquals(now()->addDay()->format('Y-m-d'), $arr['data']['due_date']);
+        $this->assertEquals(now()->format('Y-m-d'), $arr['data']['partial_due_date']);
+        $this->assertEquals(1, $arr['data']['partial']);
+
+        $response = $this->withHeaders([
+                    'X-API-SECRET' => config('ninja.api_secret'),
+                    'X-API-TOKEN' => $this->token,
+                ])->putJson('/api/v1/quotes/'.$arr['data']['id'], $arr['data']);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json();
+
+        $this->assertEquals(now()->addDay()->format('Y-m-d'), $arr['data']['due_date']);
+        $this->assertEquals(now()->format('Y-m-d'), $arr['data']['partial_due_date']);
+        $this->assertEquals(1, $arr['data']['partial']);
+
+    }
+
+    public function testQuoteToProjectConversion2()
+    {
+        $settings = ClientSettings::defaults();
+        $settings->default_task_rate = 41;
+
+        $c = Client::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'settings' => $settings,
+        ]);
+
+        $q = Quote::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $c->id,
+            'status_id' => 2,
+            'date' => now(),
+            'line_items' => [
+                [
+                    'type_id' => '2',
+                    'cost' => 200,
+                    'quantity' => 2,
+                    'notes' => 'Test200',
+                ],
+                [
+                    'type_id' => '2',
+                    'cost' => 100,
+                    'quantity' => 1,
+                    'notes' => 'Test100',
+                ],
+                [
+                    'type_id' => '1',
+                    'cost' => 10,
+                    'quantity' => 1,
+                    'notes' => 'Test',
+                ],
+
+            ],
+        ]);
+
+        $q->calc()->getQuote();
+        $q->fresh();
+
+        $p = $q->service()->convertToProject();
+
+        $this->assertEquals(3, $p->budgeted_hours);
+        $this->assertEquals(2, $p->tasks()->count());
+
+        $t = $p->tasks()->where('description', 'Test200')->first();
+
+        $this->assertEquals(200, $t->rate);
+
+        $t = $p->tasks()->where('description', 'Test100')->first();
+
+        $this->assertEquals(100, $t->rate);
+
+
+    }
+
+    public function testQuoteToProjectConversion()
+    {
+        $project = $this->quote->service()->convertToProject();
+
+        $this->assertInstanceOf('\App\Models\Project', $project);
+    }
+
+    public function testQuoteConversion()
+    {
+        $invoice = $this->quote->service()->convertToInvoice();
+
+        $this->assertInstanceOf('\App\Models\Invoice', $invoice);
+
+        $this->expectException(QuoteConversion::class);
+
+        $invoice = $this->quote->service()->convertToInvoice();
+
+    }
+
+    public function testQuoteDownloadPDF()
+    {
+        $i = $this->quote->invitations->first();
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->get("/api/v1/quote/{$i->key}/download");
+
+        $response->assertStatus(200);
+        $this->assertTrue($response->headers->get('content-type') == 'application/pdf');
+    }
+
+    public function testQuoteListApproved()
+    {
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->get('/api/v1/quotes?client_status=approved');
+
+        $response->assertStatus(200);
+    }
 
 
     public function testQuoteConvertToProject()
@@ -57,7 +305,7 @@ class QuoteTest extends TestCase
         $response = $this->withHeaders([
             'X-API-SECRET' => config('ninja.api_secret'),
             'X-API-TOKEN' => $this->token,
-        ])->post('/api/v1/quotes/bulk',['action' => 'convert_to_project', 'ids' => [$this->quote->hashed_id]]);
+        ])->post('/api/v1/quotes/bulk', ['action' => 'convert_to_project', 'ids' => [$this->quote->hashed_id]]);
 
         $response->assertStatus(200);
 
@@ -67,7 +315,7 @@ class QuoteTest extends TestCase
 
         $project = Project::find($this->decodePrimaryKey($res['data'][0]['project_id']));
 
-        $this->assertEquals($project->name, ctrans('texts.quote_number_short') . " " . $this->quote->number);
+        $this->assertEquals($project->name, ctrans('texts.quote_number_short') . " " . $this->quote->number." [{$this->quote->client->present()->name()}]");
     }
 
     public function testQuoteList()
@@ -160,5 +408,4 @@ class QuoteTest extends TestCase
 
         $response->assertStatus(200);
     }
-
 }

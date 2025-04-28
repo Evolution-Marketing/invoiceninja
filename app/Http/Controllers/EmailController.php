@@ -4,33 +4,34 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
-use App\Events\Credit\CreditWasEmailed;
-use App\Events\Quote\QuoteWasEmailed;
-use App\Http\Middleware\UserVerified;
-use App\Http\Requests\Email\SendEmailRequest;
-use App\Jobs\Entity\EmailEntity;
-use App\Jobs\Mail\EntitySentMailer;
-use App\Jobs\PurchaseOrder\PurchaseOrderEmail;
+use App\Utils\Ninja;
+use App\Models\Quote;
 use App\Models\Credit;
 use App\Models\Invoice;
+use App\Models\Webhook;
 use App\Models\PurchaseOrder;
-use App\Models\Quote;
-use App\Models\RecurringInvoice;
-use App\Transformers\CreditTransformer;
-use App\Transformers\InvoiceTransformer;
-use App\Transformers\PurchaseOrderTransformer;
-use App\Transformers\QuoteTransformer;
-use App\Transformers\RecurringInvoiceTransformer;
-use App\Utils\Ninja;
+use App\Services\Email\Email;
+use App\DataMapper\InvoiceSync;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\Response;
+use App\Models\RecurringInvoice;
+use App\Services\Email\EmailObject;
+use App\Events\Quote\QuoteWasEmailed;
+use App\Transformers\QuoteTransformer;
+use Illuminate\Mail\Mailables\Address;
+use App\Events\Credit\CreditWasEmailed;
+use App\Transformers\CreditTransformer;
+use App\Events\General\EntityWasEmailed;
+use App\Transformers\InvoiceTransformer;
+use App\Http\Requests\Email\SendEmailRequest;
+use App\Transformers\PurchaseOrderTransformer;
+use App\Transformers\RecurringInvoiceTransformer;
 
 class EmailController extends BaseController
 {
@@ -45,82 +46,12 @@ class EmailController extends BaseController
         parent::__construct();
     }
 
-    /**
-     * Returns a template filled with entity variables.
-     *
-     * @param SendEmailRequest $request
-     * @return Response
-     *
-     * @OA\Post(
-     *      path="/api/v1/emails",
-     *      operationId="sendEmailTemplate",
-     *      tags={"emails"},
-     *      summary="Sends an email for an entity",
-     *      description="Sends an email for an entity",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
-     *      @OA\RequestBody(
-     *         description="The template subject and body",
-     *         required=true,
-     *         @OA\MediaType(
-     *             mediaType="application/json",
-     *             @OA\Schema(
-     *                 type="object",
-     *                 @OA\Property(
-     *                     property="subject",
-     *                     description="The email subject",
-     *                     type="string",
-     *                 ),
-     *                 @OA\Property(
-     *                     property="body",
-     *                     description="The email body",
-     *                     type="string",
-     *                 ),
-     *                 @OA\Property(
-     *                     property="entity",
-     *                     description="The entity name",
-     *                     type="string",
-     *                 ),
-     *                 @OA\Property(
-     *                     property="entity_id",
-     *                     description="The entity_id",
-     *                     type="string",
-     *                 ),
-     *                 @OA\Property(
-     *                     property="template",
-     *                     description="The template required",
-     *                     type="string",
-     *                 ),
-     *             )
-     *         )
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="success",
-     *          @OA\Header(header="X-MINIMUM-CLIENT-VERSION", ref="#/components/headers/X-MINIMUM-CLIENT-VERSION"),
-     *          @OA\Header(header="X-RateLimit-Remaining", ref="#/components/headers/X-RateLimit-Remaining"),
-     *          @OA\Header(header="X-RateLimit-Limit", ref="#/components/headers/X-RateLimit-Limit"),
-     *          @OA\JsonContent(ref="#/components/schemas/Template"),
-     *       ),
-     *       @OA\Response(
-     *          response=422,
-     *          description="Validation error",
-     *          @OA\JsonContent(ref="#/components/schemas/ValidationError"),
-     *       ),
-     *       @OA\Response(
-     *           response="default",
-     *           description="Unexpected Error",
-     *           @OA\JsonContent(ref="#/components/schemas/Error"),
-     *       ),
-     *     )
-     */
     public function send(SendEmailRequest $request)
     {
         $entity = $request->input('entity');
         $entity_obj = $entity::withTrashed()->with('invitations')->find($request->input('entity_id'));
         $subject = $request->has('subject') ? $request->input('subject') : '';
         $body = $request->has('body') ? $request->input('body') : '';
-        $entity_string = strtolower(class_basename($entity_obj));
         $template = str_replace('email_template_', '', $request->input('template'));
 
         $data = [
@@ -128,25 +59,43 @@ class EmailController extends BaseController
             'body' => $body,
         ];
 
-        if(Ninja::isHosted() && !$entity_obj->company->account->account_sms_verified)
-              return response(['message' => 'Please verify your account to send emails.'], 400);
-        
-        nlog($entity);
+        $mo = new EmailObject();
+        $mo->subject = strlen($subject) > 3 ? $subject : null;
+        $mo->body = strlen($body) > 3 ? $body : null;
+        $mo->entity_id = $request->input('entity_id');
+        $mo->template = $request->input('template'); //full template name in use
+        $mo->entity_class = $this->resolveClass($entity);
+        $mo->email_template_body = $request->input('template');
+        $mo->email_template_subject = str_replace("template", "subject", $request->input('template'));
 
-        if($entity == 'purchaseOrder' || $entity == 'purchase_order' || $template == 'purchase_order' || $entity == 'App\Models\PurchaseOrder'){
-            return $this->sendPurchaseOrder($entity_obj, $data, $template);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+        $company = $entity_obj->company;
+
+        if ($request->cc_email && (Ninja::isSelfHost() || $user->account->isPremium())) {
+
+            foreach ($request->cc_email as $email) {
+                $mo->cc[] = new Address($email);
+            }
+
         }
 
-        $entity_obj->invitations->each(function ($invitation) use ($data, $entity_string, $entity_obj, $template) {
-            if (! $invitation->contact->trashed() && $invitation->contact->email) {
+        $entity_obj->invitations->each(function ($invitation) use ($entity_obj, $mo, $template) {
+            if (! $invitation->contact->trashed() && $invitation->contact->email && !$invitation->contact->is_locked) {
                 $entity_obj->service()->markSent()->save();
 
-                EmailEntity::dispatch($invitation->fresh(), $invitation->company, $template, $data);
+                $mo->invitation_id = $invitation->id;
+                $mo->client_id = $invitation->contact->client_id ?? null;
+                $mo->vendor_id = $invitation->contact->vendor_id ?? null;
+
+                Email::dispatch($mo, $invitation->company);
+                $entity_obj->entityEmailEvent($invitation, $template, $template);
+
             }
         });
 
+        $entity_obj = $entity_obj->fresh();
         $entity_obj->last_sent_date = now();
-
         $entity_obj->save();
 
         /*Only notify the admin ONCE, not once per contact/invite*/
@@ -155,7 +104,8 @@ class EmailController extends BaseController
             $this->entity_transformer = InvoiceTransformer::class;
 
             if ($entity_obj->invitations->count() >= 1) {
-                $entity_obj->entityEmailEvent($entity_obj->invitations->first(), 'invoice', $template);
+                event(new EntityWasEmailed($entity_obj->invitations->first(), $entity_obj->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), 'invoice'));
+                $entity_obj->sendEvent(Webhook::EVENT_SENT_INVOICE, "client");
             }
         }
 
@@ -164,7 +114,8 @@ class EmailController extends BaseController
             $this->entity_transformer = QuoteTransformer::class;
 
             if ($entity_obj->invitations->count() >= 1) {
-                event(new QuoteWasEmailed($entity_obj->invitations->first(), $entity_obj->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), 'quote'));
+                event(new EntityWasEmailed($entity_obj->invitations->first(), $entity_obj->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), 'quote'));
+                $entity_obj->sendEvent(Webhook::EVENT_SENT_QUOTE, "client");
             }
         }
 
@@ -173,7 +124,8 @@ class EmailController extends BaseController
             $this->entity_transformer = CreditTransformer::class;
 
             if ($entity_obj->invitations->count() >= 1) {
-                event(new CreditWasEmailed($entity_obj->invitations->first(), $entity_obj->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), 'credit'));
+                event(new EntityWasEmailed($entity_obj->invitations->first(), $entity_obj->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), 'credit'));
+                $entity_obj->sendEvent(Webhook::EVENT_SENT_CREDIT, "client");
             }
         }
 
@@ -182,21 +134,38 @@ class EmailController extends BaseController
             $this->entity_transformer = RecurringInvoiceTransformer::class;
         }
 
+        if ($entity_obj instanceof PurchaseOrder) {
+            $this->entity_type = PurchaseOrder::class;
+            $this->entity_transformer = PurchaseOrderTransformer::class;
+
+            
+            if ($entity_obj->invitations->count() >= 1) {
+                event(new EntityWasEmailed($entity_obj->invitations->first(), $entity_obj->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), 'purchase_order'));
+                $entity_obj->sendEvent(Webhook::EVENT_SENT_PURCHASE_ORDER, "client");
+            }
+
+        }
+
         return $this->itemResponse($entity_obj->fresh());
     }
 
-    private function sendPurchaseOrder($entity_obj, $data, $template)
+    private function resolveClass(string $entity): string
     {
+        $class = '';
 
-        $this->entity_type = PurchaseOrder::class;
+        match ($entity) {
+            'invoice' => $class = Invoice::class,
+            'App\Models\Invoice' => $class = Invoice::class,
+            'credit' => $class = Credit::class,
+            'App\Models\Credit' => $class = Credit::class,
+            'quote' => $class = Quote::class,
+            'App\Models\Quote' => $class = Quote::class,
+            'purchase_order' => $class = PurchaseOrder::class,
+            'purchaseOrder' => $class = PurchaseOrder::class,
+            'App\Models\PurchaseOrder' => $class = PurchaseOrder::class,
+            default => $class = Invoice::class,
+        };
 
-        $this->entity_transformer = PurchaseOrderTransformer::class;
-
-        $data['template'] = $template;
-        
-        PurchaseOrderEmail::dispatch($entity_obj, $entity_obj->company, $data);
-        
-        return $this->itemResponse($entity_obj);
-
+        return $class;
     }
 }

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,6 +13,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Events\Contact\ContactLoggedIn;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ClientPortal\Contact\ContactLoginRequest;
 use App\Http\ViewComposers\PortalComposer;
 use App\Libraries\MultiDB;
 use App\Models\Account;
@@ -24,7 +25,6 @@ use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Route;
 
 class ContactLoginController extends Controller
 {
@@ -37,50 +37,66 @@ class ContactLoginController extends Controller
         $this->middleware('guest:contact', ['except' => ['logout']]);
     }
 
+    private function resolveCompany($request, $company_key)
+    {
+
+        if($company_key && MultiDB::findAndSetDbByCompanyKey($company_key))
+            return Company::where('company_key', $company_key)->first();
+
+        $domain_name = $request->getHost();
+
+        if (strpos($domain_name, config('ninja.app_domain')) !== false) {
+            $subdomain = explode('.', $domain_name)[0];
+            
+            $query = ['subdomain' => $subdomain];
+            
+            if($company = MultiDB::findAndSetDbByDomain($query))
+                return $company;
+        }
+
+        $query = [
+            'portal_domain' => $request->getSchemeAndHttpHost(),
+            'portal_mode' => 'domain',
+        ];
+
+        if ($company = MultiDB::findAndSetDbByDomain($query)) {
+            return $company;
+        }
+
+        if(Ninja::isSelfHost())
+            return Company::first();
+
+        return false;
+    }
+
     public function showLoginForm(Request $request, $company_key = false)
     {
         $company = false;
         $account = false;
+        $intended = $request->query('intended') ?: false;
+        
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
-        if ($request->session()->has('company_key')) {
-            MultiDB::findAndSetDbByCompanyKey($request->session()->get('company_key'));
-            $company = Company::where('company_key', $request->input('company_key'))->first();
+        if ($intended) {
+            $request->session()->put('url.intended', $intended);
         }
-        elseif($request->has('company_key')){
-             MultiDB::findAndSetDbByCompanyKey($request->input('company_key'));
-            $company = Company::where('company_key', $request->input('company_key'))->first();
-        }elseif($company_key){
-             MultiDB::findAndSetDbByCompanyKey($company_key);
-            $company = Company::where('company_key', $company_key)->first();
-        }
+
+        $company = $this->resolveCompany($request, $company_key);
 
         if ($company) {
             $account = $company->account;
-        } elseif (! $company && strpos($request->getHost(), 'invoicing.co') !== false) {
-            $subdomain = explode('.', $request->getHost())[0];
-            MultiDB::findAndSetDbByDomain(['subdomain' => $subdomain]);
-            $company = Company::where('subdomain', $subdomain)->first();
-        } elseif (Ninja::isHosted()) {
-            MultiDB::findAndSetDbByDomain(['portal_domain' => $request->getSchemeAndHttpHost()]);
-
-            $company = Company::where('portal_domain', $request->getSchemeAndHttpHost())->first();
-        } elseif (Ninja::isSelfHost()) {
-            $account = Account::first();
-            $company = $account->default_company;
-        } else {
-            $company = null;
         }
-
-        if (! $account) {
-            $account_id = $request->get('account_id');
-            $account = Account::find($account_id);
+        else {
+            abort(404, "We could not find this site, if you think this is an error, please contact the administrator.");
         }
 
         return $this->render('auth.login', ['account' => $account, 'company' => $company]);
     }
 
-    public function login(Request $request)
+    public function login(ContactLoginRequest $request)
     {
+
         Auth::shouldUse('contact');
 
         if (Ninja::isHosted() && $request->has('company_key')) {
@@ -99,6 +115,7 @@ class ContactLoginController extends Controller
         }
 
         if (Ninja::isHosted() && $request->has('password') && $company = Company::where('company_key', $request->input('company_key'))->first()) {
+            /** @var \App\Models\Company $company **/
             $contact = ClientContact::where(['email' => $request->input('email'), 'company_id' => $company->id])
                                      ->whereHas('client', function ($query) {
                                          $query->where('is_deleted', 0);
@@ -124,6 +141,9 @@ class ContactLoginController extends Controller
 
     protected function sendLoginResponse(Request $request)
     {
+
+        $intended = $request->session()->has('url.intended') ? $request->session()->get('url.intended') : false;
+
         $request->session()->regenerate();
 
         $this->clearLoginAttempts($request);
@@ -133,6 +153,10 @@ class ContactLoginController extends Controller
         }
 
         $this->setRedirectPath();
+
+        if ($intended) {
+            $this->redirectTo = $intended;
+        }
 
         return $request->wantsJson()
                     ? new JsonResponse([], 204)
@@ -145,8 +169,8 @@ class ContactLoginController extends Controller
 
         event(new ContactLoggedIn($client, $client->company, Ninja::eventVars()));
 
-        if (session()->get('url.intended')) {
-            return redirect(session()->get('url.intended'));
+        if ($request->session()->has('url.intended')) {
+            return redirect($request->session()->get('url.intended'));
         }
 
         $this->setRedirectPath();
@@ -158,23 +182,27 @@ class ContactLoginController extends Controller
     {
         Auth::guard('contact')->logout();
         request()->session()->invalidate();
+        request()->session()->regenerateToken();
 
         return redirect('/client/login');
     }
 
     private function setRedirectPath()
     {
-        if (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_INVOICES) {
+
+        if (auth()->guard('contact')->user()->client->getSetting('enable_client_portal_dashboard') === true) {
+            $this->redirectTo = '/client/dashboard';
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_INVOICES)) {
             $this->redirectTo = '/client/invoices';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_RECURRING_INVOICES) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_RECURRING_INVOICES)) {
             $this->redirectTo = '/client/recurring_invoices';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_QUOTES) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_QUOTES)) {
             $this->redirectTo = '/client/quotes';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_CREDITS) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_CREDITS)) {
             $this->redirectTo = '/client/credits';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_TASKS) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_TASKS)) {
             $this->redirectTo = '/client/tasks';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_EXPENSES) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_EXPENSES)) {
             $this->redirectTo = '/client/expenses';
         }
     }

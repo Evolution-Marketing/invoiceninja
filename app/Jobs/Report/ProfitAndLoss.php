@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,23 +22,13 @@ use Illuminate\Queue\SerializesModels;
 
 class ProfitAndLoss implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
-    protected Company $company;
-
-    protected array $payload;
-
-    /**
-     * Create a new job instance.
-     *
-     * @param RecurringInvoice $recurring_invoice
-     * @param string $db
-     */
-    public function __construct(Company $company, array $payload)
+    public function __construct(protected Company $company, protected array $payload)
     {
-        $this->company = $company;
-
-        $this->payload = $payload;
     }
 
     /**
@@ -46,7 +36,7 @@ class ProfitAndLoss implements ShouldQueue
      *
      * @return void
      */
-    public function handle() : void
+    public function handle(): void
     {
         MultiDB::setDb($this->company->db);
 

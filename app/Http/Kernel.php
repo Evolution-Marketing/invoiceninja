@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -36,12 +36,12 @@ use App\Http\Middleware\SetDomainNameDb;
 use App\Http\Middleware\SetEmailDb;
 use App\Http\Middleware\SetInviteDb;
 use App\Http\Middleware\SetWebDb;
-use App\Http\Middleware\Shop\ShopTokenAuth;
 use App\Http\Middleware\TokenAuth;
 use App\Http\Middleware\TrimStrings;
 use App\Http\Middleware\TrustProxies;
 use App\Http\Middleware\UrlSetDb;
 use App\Http\Middleware\UserVerified;
+use App\Http\Middleware\ValidateSignature;
 use App\Http\Middleware\VendorContactKeyLogin;
 use App\Http\Middleware\VendorLocale;
 use App\Http\Middleware\VerifyCsrfToken;
@@ -55,8 +55,6 @@ use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Foundation\Http\Middleware\ValidatePostSize;
 use Illuminate\Http\Middleware\SetCacheHeaders;
 use Illuminate\Routing\Middleware\SubstituteBindings;
-use Illuminate\Routing\Middleware\ThrottleRequests;
-use Illuminate\Routing\Middleware\ValidateSignature;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
@@ -67,7 +65,7 @@ class Kernel extends HttpKernel
      *
      * These middleware are run during every request to your application.
      *
-     * @var array
+     * @var array<int,string>
      */
     protected $middleware = [
         CheckForMaintenanceMode::class,
@@ -75,15 +73,13 @@ class Kernel extends HttpKernel
         TrimStrings::class,
         ConvertEmptyStringsToNull::class,
         TrustProxies::class,
-        // \Illuminate\Http\Middleware\HandleCors::class,
         Cors::class,
-
     ];
 
     /**
      * The application's route middleware groups.
      *
-     * @var array
+     * @var array<string, array<int,string>>
      */
     protected $middlewareGroups = [
         'web' => [
@@ -129,9 +125,9 @@ class Kernel extends HttpKernel
      *
      * These middleware may be assigned to groups or used individually.
      *
-     * @var array
+     * @var array<string,string>
      */
-    protected $routeMiddleware = [
+    protected $middlewareAliases = [
         'auth' => Authenticate::class,
         'auth.basic' => AuthenticateWithBasicAuth::class,
         'bindings' => SubstituteBindings::class,
@@ -139,8 +135,7 @@ class Kernel extends HttpKernel
         'can' => Authorize::class,
         'cors' => Cors::class,
         'guest' => RedirectIfAuthenticated::class,
-        'signed' => ValidateSignature::class,
-        'throttle' => ThrottleRequests::class,
+        'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
         'verified' => EnsureEmailIsVerified::class,
         'query_logging' => QueryLogging::class,
         'token_auth' => TokenAuth::class,
@@ -152,7 +147,6 @@ class Kernel extends HttpKernel
         'email_db' => SetEmailDb::class,
         'invite_db' => SetInviteDb::class,
         'password_protected' => PasswordProtection::class,
-        'signed' => ValidateSignature::class,
         'portal_enabled' => ClientPortalEnabled::class,
         'url_db' =>  UrlSetDb::class,
         'web_db' => SetWebDb::class,
@@ -162,7 +156,6 @@ class Kernel extends HttpKernel
         'vendor_locale' => VendorLocale::class,
         'contact_register' => ContactRegister::class,
         'verify_hash' => VerifyHash::class,
-        'shop_token_auth' => ShopTokenAuth::class,
         'phantom_secret' => PhantomSecret::class,
         'contact_key_login' => ContactKeyLogin::class,
         'vendor_contact_key_login' => VendorContactKeyLogin::class,
@@ -170,6 +163,7 @@ class Kernel extends HttpKernel
         'user_verified' => UserVerified::class,
         'document_db' => SetDocumentDb::class,
         'session_domain' => SessionDomains::class,
+        //we dyanamically add the throttle middleware in RouteServiceProvider
     ];
 
     protected $middlewarePriority = [
@@ -189,7 +183,6 @@ class Kernel extends HttpKernel
         ContactTokenAuth::class,
         ContactKeyLogin::class,
         Authenticate::class,
-        ShopTokenAuth::class,
         ContactRegister::class,
         PhantomSecret::class,
         CheckClientExistence::class,
@@ -199,4 +192,5 @@ class Kernel extends HttpKernel
         SubstituteBindings::class,
         ContactAccount::class,
     ];
+
 }

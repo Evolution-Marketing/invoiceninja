@@ -4,40 +4,33 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\ValidationRules\Account;
 
-use App\Libraries\MultiDB;
-use Illuminate\Contracts\Validation\Rule;
+use Closure;
+use Illuminate\Contracts\Validation\ValidationRule;
 
 /**
  * Class EmailBlackListRule.
  */
-class EmailBlackListRule implements Rule
+class EmailBlackListRule implements ValidationRule
 {
     public array $blacklist = [
-
+        'noddy@invoiceninja.com',
     ];
 
-    /**
-     * @param string $attribute
-     * @param mixed $value
-     * @return bool
-     */
-    public function passes($attribute, $value)
+
+    public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        return ! in_array($value, $this->blacklist);
+
+        if (in_array($value, $this->blacklist)) {
+            $fail('This email address is blacklisted, if you think this is in error, please email contact@invoiceninja.com');
+        }
+
     }
 
-    /**
-     * @return string
-     */
-    public function message()
-    {
-        return 'This email address is blacklisted, if you think this is in error, please email contact@invoiceninja.com';
-    }
 }

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,7 +15,7 @@ use App\Models\RecurringInvoice;
 
 class RecurringInvoiceFactory
 {
-    public static function create(int $company_id, int $user_id) :RecurringInvoice
+    public static function create(int $company_id, int $user_id): RecurringInvoice
     {
         $invoice = new RecurringInvoice();
         $invoice->status_id = RecurringInvoice::STATUS_DRAFT;
@@ -29,6 +29,7 @@ class RecurringInvoiceFactory
         $invoice->private_notes = '';
         $invoice->date = null;
         $invoice->due_date = null;
+        $invoice->due_date_days = 'terms';
         $invoice->partial_due_date = null;
         $invoice->is_deleted = false;
         $invoice->line_items = json_encode([]);
@@ -36,6 +37,13 @@ class RecurringInvoiceFactory
         $invoice->tax_rate1 = 0;
         $invoice->tax_name2 = '';
         $invoice->tax_rate2 = 0;
+        $invoice->tax_name3 = '';
+        $invoice->tax_rate3 = 0;
+        $invoice->uses_inclusive_taxes = false;
+        $invoice->custom_surcharge_tax1 = false;
+        $invoice->custom_surcharge_tax2 = false;
+        $invoice->custom_surcharge_tax3 = false;
+        $invoice->custom_surcharge_tax4 = false;
         $invoice->custom_value1 = '';
         $invoice->custom_value2 = '';
         $invoice->custom_value3 = '';
@@ -52,8 +60,10 @@ class RecurringInvoiceFactory
         $invoice->remaining_cycles = -1;
         $invoice->paid_to_date = 0;
         $invoice->auto_bill_enabled = false;
+        $invoice->is_proforma = false;
         $invoice->auto_bill = 'off';
 
         return $invoice;
+
     }
 }

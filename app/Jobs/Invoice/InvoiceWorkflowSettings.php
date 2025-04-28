@@ -5,14 +5,13 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Invoice;
 
-use App\Models\Client;
 use App\Models\Invoice;
 use App\Repositories\BaseRepository;
 use Illuminate\Bus\Queueable;
@@ -23,9 +22,10 @@ use Illuminate\Queue\SerializesModels;
 
 class InvoiceWorkflowSettings implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public $invoice;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $client;
 
@@ -35,11 +35,9 @@ class InvoiceWorkflowSettings implements ShouldQueue
      * Create a new job instance.
      *
      * @param Invoice $invoice
-     * @param Client|null $client
      */
-    public function __construct(Invoice $invoice)
+    public function __construct(public Invoice $invoice)
     {
-        $this->invoice = $invoice;
         $this->base_repository = new BaseRepository();
     }
 
@@ -56,12 +54,5 @@ class InvoiceWorkflowSettings implements ShouldQueue
             /* Throws: Payment amount xxx does not match invoice totals. */
             $this->base_repository->archive($this->invoice);
         }
-
-        //@TODO this setting should only fire for recurring invoices
-        // if ($this->client->getSetting('auto_email_invoice')) {
-        //    $this->invoice->invitations->each(function ($invitation, $key) {
-        //         $this->invoice->service()->sendEmail($invitation->contact);
-        //    });
-        // }
     }
 }

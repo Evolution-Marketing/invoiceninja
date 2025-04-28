@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -23,11 +23,8 @@ class CreateInvitations extends AbstractService
 {
     use MakesHash;
 
-    private $invoice;
-
-    public function __construct(Invoice $invoice)
+    public function __construct(private Invoice $invoice)
     {
-        $this->invoice = $invoice;
     }
 
     public function run()
@@ -36,13 +33,10 @@ class CreateInvitations extends AbstractService
 
         if ($contacts->count() == 0) {
             $this->createBlankContact();
-
-            $this->invoice->refresh();
-            $contacts = $this->invoice->client->contacts;
         }
 
-        $contacts->each(function ($contact) {
-            $invitation = InvoiceInvitation::where('company_id', $this->invoice->company_id)
+        $this->invoice->client->contacts()->each(function ($contact) {
+            $invitation = InvoiceInvitation::query()->where('company_id', $this->invoice->company_id)
                                         ->where('client_contact_id', $contact->id)
                                         ->where('invoice_id', $this->invoice->id)
                                         ->withTrashed()
@@ -65,7 +59,7 @@ class CreateInvitations extends AbstractService
             } else {
                 $contact = $contacts->first();
 
-                $invitation = InvoiceInvitation::where('company_id', $this->invoice->company_id)
+                $invitation = InvoiceInvitation::query()->where('company_id', $this->invoice->company_id)
                                         ->where('client_contact_id', $contact->id)
                                         ->where('invoice_id', $this->invoice->id)
                                         ->withTrashed()

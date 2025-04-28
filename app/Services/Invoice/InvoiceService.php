@@ -4,42 +4,36 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Services\Invoice;
 
-use App\Events\Invoice\InvoiceWasArchived;
-use App\Jobs\Entity\CreateEntityPdf;
-use App\Jobs\Inventory\AdjustProductInventory;
-use App\Jobs\Invoice\InvoiceWorkflowSettings;
-use App\Jobs\Util\UnlinkFile;
-use App\Libraries\Currency\Conversion\CurrencyApi;
-use App\Models\CompanyGateway;
+use App\Models\Task;
+use App\Utils\Ninja;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\Task;
-use App\Repositories\BaseRepository;
-use App\Services\Client\ClientService;
-use App\Services\Invoice\ApplyPaymentAmount;
-use App\Services\Invoice\UpdateReminder;
-use App\Utils\Ninja;
-use App\Utils\Traits\MakesHash;
+use App\Models\Subscription;
+use App\Models\CompanyGateway;
 use Illuminate\Support\Carbon;
+use App\Utils\Traits\MakesHash;
+use App\Jobs\Entity\CreateRawPdf;
+use App\Services\Invoice\LocationData;
+use App\Jobs\EDocument\CreateEDocument;
 use Illuminate\Support\Facades\Storage;
+use App\Events\Invoice\InvoiceWasArchived;
+use App\Jobs\Inventory\AdjustProductInventory;
+use App\Libraries\Currency\Conversion\CurrencyApi;
 
 class InvoiceService
 {
     use MakesHash;
 
-    public $invoice;
-
-    public function __construct($invoice)
+    public function __construct(public Invoice $invoice)
     {
-        $this->invoice = $invoice;
     }
 
     /**
@@ -47,18 +41,25 @@ class InvoiceService
      * and executes child sub functions.
      * @return $this InvoiceService object
      */
-    public function markPaid()
+    public function markPaid(?string $reference = null)
     {
         $this->removeUnpaidGatewayFees();
 
-        $this->invoice = (new MarkPaid($this->invoice))->run();
+        $this->invoice = (new MarkPaid($this->invoice, $reference))->run();
 
         return $this;
     }
 
-    public function applyPaymentAmount($amount)
+    /**
+     * applyPaymentAmount
+     *
+     * @param  float $amount
+     * @param  ?string $reference
+     * @return self
+     */
+    public function applyPaymentAmount($amount, ?string $reference = null): self
     {
-        $this->invoice = (new ApplyPaymentAmount($this->invoice, $amount))->run();
+        $this->invoice = (new ApplyPaymentAmount($this->invoice, $amount, $reference))->run();
 
         return $this;
     }
@@ -78,9 +79,9 @@ class InvoiceService
      * Sets the exchange rate on the invoice if the client currency
      * is different to the company currency.
      */
-    public function setExchangeRate()
+    public function setExchangeRate($force = false)
     {
-        if ($this->invoice->exchange_rate != 1) {
+        if ($this->invoice->exchange_rate != 1 || $force) {
             return $this;
         }
 
@@ -90,7 +91,7 @@ class InvoiceService
         if ($company_currency != $client_currency) {
             $exchange_rate = new CurrencyApi();
 
-            $this->invoice->exchange_rate = $exchange_rate->exchangeRate($client_currency, $company_currency, now());
+            $this->invoice->exchange_rate = 1 / $exchange_rate->exchangeRate($client_currency, $company_currency, now());
         }
 
         return $this;
@@ -109,22 +110,26 @@ class InvoiceService
 
     /**
      * Apply a payment amount to an invoice.
+     *
+     * *** does not create a paymentable ****
      * @param  Payment $payment        The Payment
      * @param  float   $payment_amount The Payment amount
      * @return InvoiceService          Parent class object
      */
     public function applyPayment(Payment $payment, float $payment_amount)
     {
-        $this->deletePdf();
+        $this->invoice = $this->markSent()->save();
 
         $this->invoice = (new ApplyPayment($this->invoice, $payment, $payment_amount))->run();
 
         return $this;
     }
 
-    public function addGatewayFee(CompanyGateway $company_gateway, $gateway_type_id, float $amount)
+    public function addGatewayFee(CompanyGateway $company_gateway, $gateway_type_id, float $amount, string $payment_hash_string)
     {
-        $this->invoice = (new AddGatewayFee($company_gateway, $gateway_type_id, $this->invoice, $amount))->run();
+        $this->removeUnpaidGatewayFees();
+
+        $this->invoice = (new AddGatewayFee($company_gateway, $gateway_type_id, $this->invoice, $amount, $payment_hash_string))->run();
 
         return $this;
     }
@@ -173,9 +178,14 @@ class InvoiceService
         return $this;
     }
 
-    public function markSent()
+    public function markSent($fire_event = false)
     {
-        $this->invoice = (new MarkSent($this->invoice->client, $this->invoice))->run();
+
+        $this->invoice->loadMissing(['client' => function ($q) {
+            $q->without('documents', 'contacts.company', 'contacts'); // Exclude 'grandchildren' relation of 'client'
+        }]);
+
+        $this->invoice = (new MarkSent($this->invoice->client, $this->invoice))->run($fire_event);
 
         $this->setExchangeRate();
 
@@ -187,14 +197,31 @@ class InvoiceService
         return (new GetInvoicePdf($this->invoice, $contact))->run();
     }
 
+    public function getRawInvoicePdf($contact = null)
+    {
+        $invitation = $contact ? $this->invoice->invitations()->where('contact_id', $contact->id)->first() : $this->invoice->invitations()->first();
+
+        return (new CreateRawPdf($invitation))->handle();
+    }
+
     public function getInvoiceDeliveryNote(Invoice $invoice, \App\Models\ClientContact $contact = null)
     {
         return (new GenerateDeliveryNote($invoice, $contact))->run();
     }
 
-    public function sendEmail($contact = null)
+    public function getEInvoice($contact = null)
     {
-        $send_email = new SendEmail($this->invoice, null, $contact);
+        return (new CreateEDocument($this->invoice))->handle();
+    }
+
+    public function getEDocument($contact = null)
+    {
+        return $this->getEInvoice($contact);
+    }
+
+    public function sendEmail($contact = null, $email_type = 'invoice')
+    {
+        $send_email = new SendEmail($this->invoice, $email_type, $contact);
 
         return $send_email->run();
     }
@@ -217,7 +244,7 @@ class InvoiceService
 
     public function markDeleted()
     {
-        $this->removeUnpaidGatewayFees();
+        // $this->removeUnpaidGatewayFees();
 
         $this->invoice = (new MarkInvoiceDeleted($this->invoice))->run();
 
@@ -268,7 +295,40 @@ class InvoiceService
             return $this;
         }
 
-        $this->invoice->due_date = Carbon::parse($this->invoice->date)->addDays($this->invoice->client->getSetting('payment_terms'));
+        //12-10-2022
+        if ($this->invoice->partial > 0 && !$this->invoice->partial_due_date) {
+            $this->invoice->partial_due_date = Carbon::parse($this->invoice->date)->addDays((int)$this->invoice->client->getSetting('payment_terms'));
+        } else {
+            $this->invoice->due_date = Carbon::parse($this->invoice->date)->addDays((int)$this->invoice->client->getSetting('payment_terms'));
+        }
+
+        return $this;
+    }
+
+    /**
+     * Reset the reminders if only the
+     * partial has been paid.
+     *
+     * We can _ONLY_ call this _IF_ a partial
+     * amount has been paid, otherwise we end up wiping
+     * all reminders regardless
+     *
+     * @return self
+     */
+    public function checkReminderStatus(): self
+    {
+
+        if ($this->invoice->partial == 0) {
+            $this->invoice->partial_due_date = null;
+        }
+
+        if ($this->invoice->partial == 0 && $this->invoice->balance > 0) {
+            $this->invoice->reminder1_sent = null;
+            $this->invoice->reminder2_sent = null;
+            $this->invoice->reminder3_sent = null;
+
+            $this->setReminder();
+        }
 
         return $this;
     }
@@ -293,6 +353,8 @@ class InvoiceService
             $this->setStatus(Invoice::STATUS_PAID);
         } elseif ($this->invoice->balance > 0 && $this->invoice->balance < $this->invoice->amount) {
             $this->setStatus(Invoice::STATUS_PARTIAL);
+        } elseif ($this->invoice->balance < 0 || $this->invoice->balance > 0) {
+            $this->invoice->status_id = Invoice::STATUS_SENT;
         }
 
         return $this;
@@ -308,16 +370,32 @@ class InvoiceService
             $this->invoice->status_id = Invoice::STATUS_PAID;
         } elseif ($this->invoice->balance > 0 && $this->invoice->balance < $this->invoice->amount) {
             $this->invoice->status_id = Invoice::STATUS_PARTIAL;
-        }
-        elseif ($this->invoice->balance < 0) {
+        } elseif ($this->invoice->balance < 0 || $this->invoice->balance > 0) {
             $this->invoice->status_id = Invoice::STATUS_SENT;
         }
 
         return $this;
     }
 
-    public function toggleFeesPaid()
+    public function toggleFeesPaid(?string $payment_hash_string = null)
     {
+        if ($payment_hash_string) {
+        
+            $this->invoice->line_items = collect($this->invoice->line_items)
+                                                ->map(function ($item) use ($payment_hash_string) {
+                                                    if ($item->type_id == '3' && (($item->unit_code ?? '') == $payment_hash_string)) {
+                                                        $item->type_id = '4';
+                                                    }
+
+                                                    return $item;
+                                                })->toArray();
+                                                
+                $this->deleteEInvoice();
+
+                return $this;
+
+        }
+
         $this->invoice->line_items = collect($this->invoice->line_items)
                                      ->map(function ($item) {
                                          if ($item->type_id == '3') {
@@ -327,7 +405,7 @@ class InvoiceService
                                          return $item;
                                      })->toArray();
 
-        $this->touchPdf();
+        $this->deleteEInvoice();
 
         return $this;
     }
@@ -336,14 +414,35 @@ class InvoiceService
     {
         $this->invoice->load('invitations');
 
+        //30-06-2023
         $this->invoice->invitations->each(function ($invitation) {
             try {
-                if (Storage::disk(config('filesystems.default'))->exists($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf')) {
-                    Storage::disk(config('filesystems.default'))->delete($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf');
-                }
+                // if (Storage::disk(config('filesystems.default'))->exists($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf')) {
+                Storage::disk(config('filesystems.default'))->delete($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf');
+                // }
 
-                if (Ninja::isHosted() && Storage::disk('public')->exists($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf')) {
+                // if (Ninja::isHosted() && Storage::disk('public')->exists($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf')) {
+                if (Ninja::isHosted()) {
                     Storage::disk('public')->delete($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf');
+                }
+            } catch (\Exception $e) {
+                nlog($e->getMessage());
+            }
+        });
+
+        return $this;
+    }
+
+    public function deleteEInvoice()
+    {
+        $this->invoice->load('invitations');
+
+        $this->invoice->invitations->each(function ($invitation) {
+            try {
+                Storage::disk(config('filesystems.default'))->delete($this->invoice->client->e_document_filepath($invitation).$this->invoice->getFileName("xml"));
+                
+                if (Ninja::isHosted()) {
+                    Storage::disk('public')->delete($this->invoice->client->e_document_filepath($invitation).$this->invoice->getFileName("xml"));
                 }
             } catch (\Exception $e) {
                 nlog($e->getMessage());
@@ -358,16 +457,18 @@ class InvoiceService
         $balance = $this->invoice->balance;
 
         //return early if type three does not exist.
-        if (! collect($this->invoice->line_items)->contains('type_id', 3)) {
+        if ($this->invoice->status_id == Invoice::STATUS_PAID || ! collect($this->invoice->line_items)->contains('type_id', 3)) {
             return $this;
         }
 
-        $pre_count = count($this->invoice->line_items);
+        $pre_count = count((array)$this->invoice->line_items);
 
-        $this->invoice->line_items = collect($this->invoice->line_items)
-                                     ->reject(function ($item) {
-                                         return $item->type_id == '3';
-                                     })->toArray();
+        $items = collect((array)$this->invoice->line_items)
+                    ->filter(function ($item) {
+                        return $item->type_id != '3';
+                    })->toArray();
+
+        $this->invoice->line_items = array_values($items);
 
         $this->invoice = $this->invoice->calc()->getInvoice();
 
@@ -381,14 +482,12 @@ class InvoiceService
             $adjustment = $balance - $new_balance;
 
             $this->invoice
-            ->client
-            ->service()
-            ->updateBalance($adjustment * -1)
-            ->save();
-
-            $this->invoice
             ->ledger()
             ->updateInvoiceBalance($adjustment * -1, 'Adjustment for removing gateway fee');
+
+            $this->invoice->client->service()->updateBalance($adjustment * -1);
+            // $this->invoice->client->service()->calculateBalance();
+
         }
 
         return $this;
@@ -411,35 +510,10 @@ class InvoiceService
         return $this;
     }
 
-    /**
-     * Sometimes we need to refresh the
-     * PDF when it is updated etc.
-     * @return InvoiceService
-     */
-    public function touchPdf($force = false)
-    {
-        try {
-            if ($force) {
-                $this->invoice->invitations->each(function ($invitation) {
-                    (new CreateEntityPdf($invitation))->handle();
-                });
-
-                return $this;
-            }
-
-            $this->invoice->invitations->each(function ($invitation) {
-                CreateEntityPdf::dispatch($invitation);
-            });
-        } catch (\Exception $e) {
-            nlog('failed creating invoices in Touch PDF');
-        }
-
-        return $this;
-    }
-
     /*When a reminder is sent we want to touch the dates they were sent*/
     public function touchReminder(string $reminder_template)
     {
+        nrlog(now()->format('Y-m-d h:i:s') . " INV #{$this->invoice->number} : Touching Reminder => {$reminder_template}");
         switch ($reminder_template) {
             case 'reminder1':
                 $this->invoice->reminder1_sent = now();
@@ -488,20 +562,32 @@ class InvoiceService
             return $item;
         });
 
-        Task::whereIn('id', $tasks->pluck('task_id'))->update(['invoice_id' => $this->invoice->id]);
-        Expense::whereIn('id', $tasks->pluck('expense_id'))->update(['invoice_id' => $this->invoice->id]);
+        Task::query()->whereIn('id', $tasks->pluck('task_id'))->update(['invoice_id' => $this->invoice->id]);
+        Expense::query()->whereIn('id', $tasks->pluck('expense_id'))->update(['invoice_id' => $this->invoice->id]);
 
         return $this;
     }
 
-    public function fillDefaults()
+    public function unlockDocuments(): self
+    {
+
+        //2025-02-20 ** Feature to allow documents to be visible / attachable after payment **
+        if ($this->invoice->status_id == Invoice::STATUS_PAID && $this->invoice->client->getSetting('unlock_invoice_documents_after_payment')) {
+            $this->invoice->documents()->update(['is_public' => true]);
+        }
+
+        return $this;
+
+    }
+
+    public function fillDefaults(bool $is_recurring = false)
     {
         $this->invoice->load('client.company');
 
         $settings = $this->invoice->client->getMergedSettings();
 
         if (! $this->invoice->design_id) {
-            $this->invoice->design_id = $this->decodePrimaryKey($settings->invoice_design_id);
+            $this->invoice->design_id = intval($this->decodePrimaryKey($settings->invoice_design_id));
         }
 
         if (! isset($this->invoice->footer) || empty($this->invoice->footer)) {
@@ -518,7 +604,11 @@ class InvoiceService
 
         /* If client currency differs from the company default currency, then insert the client exchange rate on the model.*/
         if (! isset($this->invoice->exchange_rate) && $this->invoice->client->currency()->id != (int) $this->invoice->company->settings->currency_id) {
-            $this->invoice->exchange_rate = $this->invoice->client->currency()->exchange_rate;
+            $this->invoice->exchange_rate = $this->invoice->client->setExchangeRate();
+        }
+
+        if (!$is_recurring && $this->invoice->client->getSetting('auto_bill_standard_invoices')) {
+            $this->invoice->auto_bill_enabled = true;
         }
 
         if ($settings->counter_number_applied == 'when_saved') {
@@ -526,6 +616,11 @@ class InvoiceService
         }
 
         return $this;
+    }
+
+    public function location(): array
+    {
+        return (new LocationData($this->invoice))->run();       
     }
 
     public function workFlow()
@@ -566,11 +661,24 @@ class InvoiceService
         return $this;
     }
 
+    public function setPaymentLink(string $subscription_id): self
+    {
+
+        $sub_id = $this->decodePrimaryKey($subscription_id);
+
+        if (Subscription::withTrashed()->where('id', $sub_id)->where('company_id', $this->invoice->company_id)->exists()) {
+            $this->invoice->subscription_id = $sub_id;
+        }
+
+        return $this;
+
+    }
+
     /**
      * Saves the invoice.
      * @return Invoice object
      */
-    public function save() :?Invoice
+    public function save(): ?Invoice
     {
         $this->invoice->saveQuietly();
 

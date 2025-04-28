@@ -4,13 +4,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Util;
 
+use App\Exceptions\ClientHostedMigrationException;
 use App\Exceptions\MigrationValidatorFailed;
 use App\Exceptions\NonExistingMigrationFile;
 use App\Exceptions\ProcessingMigrationArchiveFailed;
@@ -27,13 +28,17 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use ZipArchive;
 
 class StartMigration implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     private $filepath;
 
@@ -47,6 +52,8 @@ class StartMigration implements ShouldQueue
      */
     private $company;
 
+    private $silent_migration;
+
     /**
      * Create a new job instance.
      *
@@ -58,15 +65,12 @@ class StartMigration implements ShouldQueue
 
     public $timeout = 0;
 
-    //  public $maxExceptions = 2;
-
-    //public $backoff = 86430;
-
-    public function __construct($filepath, User $user, Company $company)
+    public function __construct($filepath, User $user, Company $company, $silent_migration = false)
     {
         $this->filepath = $filepath;
         $this->user = $user;
         $this->company = $company;
+        $this->silent_migration = $silent_migration;
     }
 
     /**
@@ -77,6 +81,8 @@ class StartMigration implements ShouldQueue
     public function handle()
     {
         nlog('Inside Migration Job');
+
+        Cache::put("migration-{$this->company->company_key}", "started", 86400);
 
         set_time_limit(0);
 
@@ -116,25 +122,31 @@ class StartMigration implements ShouldQueue
                 throw new NonExistingMigrationFile('Migration file does not exist, or it is corrupted.');
             }
 
-            (new Import($file, $this->company, $this->user))->handle();
+            (new Import($file, $this->company, $this->user, [], $this->silent_migration))->handle();
 
             Storage::deleteDirectory(public_path("storage/migrations/{$filename}"));
 
             $this->company->update_products = $update_product_flag;
             $this->company->save();
 
+            Cache::put("migration-{$this->company->company_key}", "completed", 86400);
+
             App::forgetInstance('translator');
             $t = app('translator');
             $t->replace(Ninja::transformTranslations($this->company->settings));
-        } catch (NonExistingMigrationFile | ProcessingMigrationArchiveFailed | ResourceNotAvailableForMigration | MigrationValidatorFailed | ResourceDependencyMissing | \Exception $e) {
+        } catch (ClientHostedMigrationException | NonExistingMigrationFile | ProcessingMigrationArchiveFailed | ResourceNotAvailableForMigration | MigrationValidatorFailed | ResourceDependencyMissing | \Exception $e) {
             $this->company->update_products = $update_product_flag;
             $this->company->save();
+
+            Cache::put("migration-{$this->company->company_key}", "failed", 86400);
 
             if (Ninja::isHosted()) {
                 app('sentry')->captureException($e);
             }
 
-            Mail::to($this->user->email, $this->user->name())->send(new MigrationFailed($e, $this->company, $e->getMessage()));
+            if (!$this->silent_migration) {
+                Mail::to($this->user->email, $this->user->name())->send(new MigrationFailed($e, $this->company, $e->getMessage()));
+            }
 
             if (Ninja::isHosted()) {
                 $migration_failed = new MigrationFailed($e, $this->company, $e->getMessage());
@@ -146,15 +158,16 @@ class StartMigration implements ShouldQueue
             if (app()->environment() !== 'production') {
                 info($e->getMessage());
             }
-        }
 
-        //always make sure we unset the migration as running
+            Storage::deleteDirectory(public_path("storage/migrations/{$filename}"));
+
+        }
 
         return true;
     }
 
     public function failed($exception = null)
     {
-        info(print_r($exception->getMessage(), 1));
+        nlog($exception->getMessage());
     }
 }

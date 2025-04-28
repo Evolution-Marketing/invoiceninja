@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,13 +22,12 @@ use Illuminate\Queue\SerializesModels;
 
 class PreviewPdf implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, PdfMaker, PageNumbering;
-
-    public $company;
-
-    private $disk;
-
-    public $design_string;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use PdfMaker;
+    use PageNumbering;
 
     /**
      * Create a new job instance.
@@ -36,13 +35,8 @@ class PreviewPdf implements ShouldQueue
      * @param $design_string
      * @param Company $company
      */
-    public function __construct($design_string, Company $company)
+    public function __construct(public string $design_string, public Company $company)
     {
-        $this->company = $company;
-
-        $this->design_string = $design_string;
-
-        $this->disk = $disk ?? config('filesystems.default');
     }
 
     public function handle()

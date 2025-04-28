@@ -5,25 +5,17 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers\Sample;
 
-use App\Exceptions\PaymentFailed;
-use App\Jobs\Util\SystemLogger;
-use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Payment;
-use App\Models\PaymentHash;
 use App\Models\PaymentType;
-use App\Models\SystemLog;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 
 class CreditCard
 {
@@ -77,6 +69,8 @@ class CreditCard
         //     $error .= " - {$response->approval_message}";
 
         // $error_code = property_exists($response, 'approval_message') ? $response->approval_message : 'Undefined code';
+        $error = '';
+        $error_code = '';
 
         $data = [
             'response' => $response,

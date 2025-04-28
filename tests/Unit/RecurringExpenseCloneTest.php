@@ -16,22 +16,28 @@ use App\Factory\RecurringExpenseToExpenseFactory;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Company;
-use App\Models\RecurringExpense;
 use App\Models\User;
-use App\Utils\Ninja;
+use App\Utils\Traits\AppSetup;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class RecurringExpenseCloneTest extends TestCase
 {
+    use AppSetup;
+
     public $faker;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
         $this->faker = \Faker\Factory::create();
+        
+        if (\App\Models\Country::count() == 0) {
+            \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
+        }
+
     }
 
     public function testBadBase64String()

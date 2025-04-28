@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,7 +12,9 @@
 namespace App\Http\Requests\Subscription;
 
 use App\Http\Requests\Request;
+use App\Models\Account;
 use App\Models\Subscription;
+use App\Rules\Subscriptions\Steps;
 use Illuminate\Validation\Rule;
 
 class StoreSubscriptionRequest extends Request
@@ -24,7 +26,7 @@ class StoreSubscriptionRequest extends Request
      */
     public function authorize()
     {
-        return auth()->user()->can('create', Subscription::class);
+        return auth()->user()->can('create', Subscription::class) && auth()->user()->account->hasFeature(Account::FEATURE_API);
     }
 
     /**
@@ -35,26 +37,35 @@ class StoreSubscriptionRequest extends Request
     public function rules()
     {
         $rules = [
-            'product_ids' => ['sometimes'],
-            'recurring_product_ids' => ['sometimes'],
-            'assigned_user_id' => ['sometimes'],
-            'is_recurring' => ['sometimes'],
-            'frequency_id' => ['required_with:recurring_product_ids'],
-            'auto_bill' => ['sometimes'],
-            'promo_code' => ['sometimes'],
-            'promo_discount' => ['sometimes'],
-            'is_amount_discount' => ['sometimes'],
-            'allow_cancellation' => ['sometimes'],
-            'per_set_enabled' => ['sometimes'],
-            'min_seats_limit' => ['sometimes'],
-            'max_seats_limit' => ['sometimes'],
-            'trial_enabled' => ['sometimes'],
-            'trial_duration' => ['sometimes'],
-            'allow_query_overrides' => ['sometimes'],
-            'allow_plan_changes' => ['sometimes'],
-            'refund_period' => ['sometimes'],
-            'webhook_configuration' => ['array'],
             'name' => ['required', Rule::unique('subscriptions')->where('company_id', auth()->user()->company()->id)],
+            'group_id' => ['bail','sometimes', 'nullable', Rule::exists('group_settings', 'id')->where('company_id', auth()->user()->company()->id)],
+            'assigned_user_id' => ['bail','sometimes', 'nullable', Rule::exists('users', 'id')->where('account_id', auth()->user()->account_id)],
+            'product_ids' => 'bail|sometimes|nullable|string',
+            'recurring_product_ids' => 'bail|sometimes|nullable|string',
+            'is_recurring' => 'bail|sometimes|bool',
+            'frequency_id' => 'bail|required_with:recurring_product_ids',
+            'auto_bill' => 'bail|sometimes|nullable|string',
+            'promo_code' => 'bail|sometimes|nullable|string',
+            'promo_discount' => 'bail|sometimes|numeric',
+            'is_amount_discount' => 'bail|sometimes|bool',
+            'allow_cancellation' => 'bail|sometimes|bool',
+            'per_set_enabled' => 'bail|sometimes|bool',
+            'min_seats_limit' => 'bail|sometimes|numeric',
+            'max_seats_limit' => 'bail|sometimes|numeric',
+            'trial_enabled' => 'bail|sometimes|bool',
+            'trial_duration' => 'bail|sometimes|numeric',
+            'allow_query_overrides' => 'bail|sometimes|bool',
+            'allow_plan_changes' => 'bail|sometimes|bool',
+            'refund_period' => 'bail|sometimes|numeric',
+            'webhook_configuration' => 'bail|array',
+            'webhook_configuration.post_purchase_url' => 'bail|sometimes|nullable|string',
+            'webhook_configuration.post_purchase_rest_method' => 'bail|sometimes|nullable|string',
+            'webhook_configuration.post_purchase_headers' => 'bail|sometimes|array',
+            'registration_required' => 'bail|sometimes|bool',
+            'optional_recurring_product_ids' => 'bail|sometimes|nullable|string',
+            'optional_product_ids' => 'bail|sometimes|nullable|string',
+            'use_inventory_management' => 'bail|sometimes|bool',
+            'steps' => ['required', new Steps()],
         ];
 
         return $this->globalRules($rules);

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,13 +19,13 @@ use Illuminate\Contracts\Validation\Rule;
  */
 class CanStoreClientsRule implements Rule
 {
-    public $company_id;
+    /**
+     * @var \App\Models\Company $company
+     */
+    public Company $company;
 
-    public $company;
-
-    public function __construct($company_id)
+    public function __construct(public int $company_id)
     {
-        $this->company_id = $company_id;
     }
 
     /**
@@ -35,7 +35,7 @@ class CanStoreClientsRule implements Rule
      */
     public function passes($attribute, $value)
     {
-        $this->company = Company::find($this->company_id);
+        $this->company = Company::query()->find($this->company_id);
 
         return $this->company->clients()->count() < $this->company->account->hosted_client_count;
     }

@@ -1,9 +1,16 @@
 <?php
+/**
+ * Invoice Ninja (https://invoiceninja.com).
+ *
+ * @link https://github.com/invoiceninja/invoiceninja source repository
+ *
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ *
+ * @license https://www.elastic.co/licensing/elastic-license
+ */
 
 namespace App\Console\Commands;
 
-use App\Models\Company;
-use App\Models\User;
 use App\Utils\CurlUtils;
 use Illuminate\Console\Command;
 
@@ -54,19 +61,21 @@ class MobileLocalization extends Command
 
     private function laravelResources()
     {
-        $resources = $this->getResources();
+        $resources = (array)$this->getResources();
 
-        foreach ($resources as $key => $val) {
-            $transKey = "texts.{$key}";
-            if (trans($transKey) == $transKey) {
-                echo "'$key' => '$val',\n";
+        if (is_iterable($resources)) {
+            foreach ($resources as $key => $val) {
+                $transKey = "texts.{$key}";
+                if (trans($transKey) == $transKey) {
+                    echo "'$key' => '$val',\n";
+                }
             }
         }
     }
 
     private function flutterResources()
     {
-        $languages = cache('languages');
+        $languages = app('languages');
         $resources = $this->getResources();
 
         foreach ($languages as $language) {
@@ -103,8 +112,9 @@ class MobileLocalization extends Command
         $data = substr($data, $start, $end - $start - 5);
 
         $data = str_replace("\n", '', $data);
-        $data = str_replace('"', "\'", $data);
+        $data = str_replace("\'", "\#", $data);
         $data = str_replace("'", '"', $data);
+        $data = str_replace("\#", "'", $data);
 
         return json_decode('{'.rtrim($data, ',').'}');
     }

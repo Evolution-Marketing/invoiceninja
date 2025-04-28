@@ -20,6 +20,7 @@ use App\Models\ClientContact;
 use App\Models\Company;
 use App\Models\CompanyToken;
 use App\Models\User;
+use App\Models\Vendor;
 
 /**
  * Class MockUnitData.
@@ -34,6 +35,8 @@ trait MockUnitData
 
     public $client;
 
+    public $vendor;
+
     public $faker;
 
     public $primary_contact;
@@ -42,13 +45,18 @@ trait MockUnitData
 
     public function makeTestData()
     {
+        
+        if (\App\Models\Country::count() == 0) {
+            \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
+        }
+
         $this->faker = \Faker\Factory::create();
 
         $this->account = Account::factory()->create();
 
         $this->user = User::factory()->create([
             'account_id' => $this->account->id,
-            'email' => $this->faker->safeEmail(),
+            'email' => $this->faker->unique()->safeEmail(),
         ]);
 
         $this->company = Company::factory()->create([
@@ -78,7 +86,7 @@ trait MockUnitData
 
         $this->token = \Illuminate\Support\Str::random(64);
 
-        $company_token = new CompanyToken;
+        $company_token = new CompanyToken();
         $company_token->user_id = $this->user->id;
         $company_token->company_id = $this->company->id;
         $company_token->account_id = $this->account->id;
@@ -88,6 +96,11 @@ trait MockUnitData
         $company_token->save();
 
         $this->client = Client::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $this->vendor = Vendor::factory()->create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
         ]);

@@ -6,6 +6,7 @@
     <meta name="ctrans-cvv" content="{{ ctrans('texts.cvv') }}">
     <meta name="ctrans-card_number" content="{{ ctrans('texts.card_number') }}">
     <meta name="ctrans-expires" content="{{ ctrans('texts.expires') }}">
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -59,6 +60,10 @@
 @endsection
 
 @section('gateway_footer')
+    @if($gateway->company_gateway->getConfigField('testMode'))
+    <script src='https://protect.sandbox.paytrace.com/js/protect.min.js'></script>
+    @else
     <script src='https://protect.paytrace.com/js/protect.min.js'></script>
-    <script src="{{ asset('js/clients/payments/paytrace-credit-card.js') }}"></script>
+    @endif
+    @vite('resources/js/clients/payments/paytrace-credit-card.js')
 @endsection

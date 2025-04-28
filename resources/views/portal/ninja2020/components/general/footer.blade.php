@@ -14,12 +14,6 @@
                 <a x-on:click="privacy = true; tos = false" href="#" class="hover:underline text-sm primary-color flex items-center mr-2">{{ __('texts.privacy_policy')}}</a>
             @endif
 
-            @if(strlen($client->getSetting('client_portal_privacy_policy')) > 1 && strlen($client->getSetting('client_portal_terms')) > 1)
-                <!-- <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-minus">
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg> Long dash between items. -->
-            @endif
-
             @if(strlen($client->getSetting('client_portal_terms')) > 1)
                 <a x-on:click="privacy = false; tos = true" href="#" class="hover:underline text-sm primary-color flex items-center mr-2">{{ __('texts.terms')}}</a>
             @endif
@@ -34,13 +28,13 @@
 
     @if(strlen($client->getSetting('client_portal_privacy_policy')) > 1)
         @component('portal.ninja2020.components.general.pop-up', ['title' => __('texts.privacy_policy') ,'show_property' => 'privacy'])
-            {!! $client->getSetting('client_portal_privacy_policy') !!}
+            {{ $client->getSetting('client_portal_privacy_policy') }}
         @endcomponent
     @endif
 
     @if(strlen($client->getSetting('client_portal_terms')) > 1)
         @component('portal.ninja2020.components.general.pop-up', ['title' => __('texts.terms') ,'show_property' => 'tos'])
-            {!! $client->getSetting('client_portal_terms') !!}
+            {{ $client->getSetting('client_portal_terms') }}
         @endcomponent
     @endif
 

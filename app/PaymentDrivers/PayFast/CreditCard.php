@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,18 +14,17 @@ namespace App\PaymentDrivers\PayFast;
 
 use App\Exceptions\PaymentFailed;
 use App\Jobs\Util\SystemLogger;
-use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Payment;
-use App\Models\PaymentHash;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\PayFastPaymentDriver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
-class CreditCard
+class CreditCard implements LivewireMethodInterface
 {
     public $payfast;
 
@@ -144,7 +143,7 @@ class CreditCard
         $cgt['token'] = $data['token'];
         $cgt['payment_method_id'] = GatewayType::CREDIT_CARD;
 
-        $payment_meta = new \stdClass;
+        $payment_meta = new \stdClass();
         $payment_meta->exp_month = 'xx';
         $payment_meta->exp_year = 'xx';
         $payment_meta->brand = 'CC';
@@ -160,24 +159,9 @@ class CreditCard
 
     public function paymentView($data)
     {
-        $payfast_data = [
-            'merchant_id' => $this->payfast->company_gateway->getConfigField('merchantId'),
-            'merchant_key' => $this->payfast->company_gateway->getConfigField('merchantKey'),
-            'return_url' => route('client.payments.index'),
-            'cancel_url' => route('client.payment_methods.index'),
-            'notify_url' => $this->payfast->genericWebhookUrl(),
-            'm_payment_id' => $data['payment_hash'],
-            'amount' => $data['amount_with_fee'],
-            'item_name' => 'purchase',
-            'item_description' => ctrans('texts.invoices').': '.collect($data['invoices'])->pluck('invoice_number'),
-            'passphrase' => $this->payfast->company_gateway->getConfigField('passphrase'),
-        ];
+        $data = $this->paymentData($data);
 
-        $payfast_data['signature'] = $this->payfast->generateSignature($payfast_data);
-        $payfast_data['gateway'] = $this->payfast;
-        $payfast_data['payment_endpoint_url'] = $this->payfast->endpointUrl();
-
-        return render('gateways.payfast.pay', array_merge($data, $payfast_data));
+        return render('gateways.payfast.pay', array_merge($data));
     }
 
     /*
@@ -213,6 +197,8 @@ class CreditCard
     {
         $response_array = $request->all();
 
+        nlog($request->all());
+
         $state = [
             'server_response' => $request->all(),
             'payment_hash' => $request->input('m_payment_id'),
@@ -222,7 +208,7 @@ class CreditCard
         $this->payfast->payment_hash->save();
 
         if ($response_array['payment_status'] == 'COMPLETE') {
-            $this->payfast->logSuccessfulGatewayResponse(['response' => $response_array, 'data' => $this->payfast->payment_hash], SystemLog::TYPE_PAYFAST);
+            $this->payfast->logSuccessfulGatewayResponse(['response' => $response_array, 'data' => $this->payfast->payment_hash->data], SystemLog::TYPE_PAYFAST);
 
             return $this->processSuccessfulPayment($response_array);
         } else {
@@ -240,7 +226,7 @@ class CreditCard
 
         $payment = $this->payfast->createPayment($payment_record, Payment::STATUS_COMPLETED);
 
-        //return redirect()->route('client.payments.show', ['payment' => $this->payfast->encodePrimaryKey($payment->id)]);
+        return redirect()->route('client.payments.show', ['payment' => $payment->hashed_id]);
     }
 
     private function processUnsuccessfulPayment($server_response)
@@ -262,5 +248,37 @@ class CreditCard
         );
 
         throw new PaymentFailed('Failed to process the payment.', 500);
+    }
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.payfast.pay_livewire';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $payfast_data = [
+            'merchant_id' => $this->payfast->company_gateway->getConfigField('merchantId'),
+            'merchant_key' => $this->payfast->company_gateway->getConfigField('merchantKey'),
+            'return_url' => route('client.invoice.show', ['invoice' => $this->payfast->payment_hash->fee_invoice->hashed_id]), //route('client.payments.index'),
+            'cancel_url' => route('client.invoice.show', ['invoice' => $this->payfast->payment_hash->fee_invoice->hashed_id]), //route('client.payment_methods.index'),
+            'notify_url' => $this->payfast->genericWebhookUrl(),
+            'm_payment_id' => $data['payment_hash'],
+            'amount' => $data['amount_with_fee'],
+            'item_name' => 'purchase',
+            'item_description' => ctrans('texts.invoices').': '.collect($data['invoices'])->pluck('invoice_number'),
+            'passphrase' => $this->payfast->company_gateway->getConfigField('passphrase'),
+        ];
+
+        $payfast_data['signature'] = $this->payfast->generateSignature($payfast_data);
+        $payfast_data['gateway'] = $this->payfast;
+        $payfast_data['payment_endpoint_url'] = $this->payfast->endpointUrl();
+
+        return array_merge($data, $payfast_data);
     }
 }

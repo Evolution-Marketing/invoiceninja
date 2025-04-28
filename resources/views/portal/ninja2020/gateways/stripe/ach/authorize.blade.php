@@ -51,9 +51,9 @@
             <option disabled selected></option>
             @foreach($countries as $country)
                 @if($country->iso_3166_2 == 'US')
-                <option value="{{ $country->iso_3166_2 }}" selected>{{ $country->iso_3166_2 }} ({{ $country->name }})</option>
+                <option value="{{ $country->iso_3166_2 }}" selected>{{ $country->iso_3166_2 }} ({{ $country->getName() }})</option>
                 @else
-                <option value="{{ $country->iso_3166_2 }}">{{ $country->iso_3166_2 }} ({{ $country->name }})</option>
+                <option value="{{ $country->iso_3166_2 }}">{{ $country->iso_3166_2 }} ({{ $country->getName() }})</option>
                 @endif
             @endforeach
         </select>
@@ -64,7 +64,7 @@
             <option disabled selected></option>
             @foreach($currencies as $currency)
                 @if($currency->code == 'USD')
-                    <option value="{{ $currency->code }}" selected>{{ $currency->code }} ({{ $currency->name }})</option>
+                    <option value="{{ $currency->code }}" selected>{{ $currency->code }} ({{ $currency->getName() }})</option>
                 @else
                     <option value="{{ $currency->code }}">{{ $currency->code }} ({{ $currency->name }})</option>
                 @endif
@@ -82,7 +82,7 @@
 
     @component('portal.ninja2020.components.general.card-element-single')
         <input type="checkbox" class="form-checkbox mr-1" id="accept-terms" required>
-        <label for="accept-terms" class="cursor-pointer">{{ ctrans('texts.ach_authorization', ['company' => auth()->user()->company->present()->name, 'email' => auth()->guard('contact')->user()->client->company->settings->email]) }}</label>
+        <label for="accept-terms" class="cursor-pointer">{{ ctrans('texts.ach_authorization', ['company' => auth()->guard('contact')->user()->company->present()->name, 'email' => auth()->guard('contact')->user()->client->company->settings->email]) }}</label>
     @endcomponent
 
     @component('portal.ninja2020.gateways.includes.pay_now', ['id' => 'save-button'])
@@ -92,5 +92,5 @@
 
 @section('gateway_footer')
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-ach.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-ach.js')
 @endsection

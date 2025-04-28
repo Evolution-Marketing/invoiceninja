@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,7 +15,6 @@ use App\Http\Requests\Request;
 use App\Utils\Traits\ChecksEntityStatus;
 use App\Utils\Traits\CleanLineItems;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 
 class UpdateRecurringQuoteRequest extends Request
@@ -29,7 +28,7 @@ class UpdateRecurringQuoteRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
         return auth()->user()->can('edit', $this->recurring_quote);
     }
@@ -38,14 +37,16 @@ class UpdateRecurringQuoteRequest extends Request
     {
         $rules = [];
 
-        if ($this->input('documents') && is_array($this->input('documents'))) {
-            $documents = count($this->input('documents'));
+        if ($this->file('documents') && is_array($this->file('documents'))) {
+            $rules['documents.*'] = $this->fileValidation();
+        } elseif ($this->file('documents')) {
+            $rules['documents'] = $this->fileValidation();
+        }
 
-            foreach (range(0, $documents) as $index) {
-                $rules['documents.'.$index] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-            }
-        } elseif ($this->input('documents')) {
-            $rules['documents'] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
+        if ($this->file('file') && is_array($this->file('file'))) {
+            $rules['file.*'] = $this->fileValidation();
+        } elseif ($this->file('file')) {
+            $rules['file'] = $this->fileValidation();
         }
 
         if ($this->number) {
@@ -80,11 +81,11 @@ class UpdateRecurringQuoteRequest extends Request
      * off / optin / optout will reset the status of this field to off to allow
      * the client to choose whether to auto_bill or not.
      *
-     * @param enum $auto_bill off/always/optin/optout
+     * @param string $auto_bill off/always/optin/optout
      *
      * @return bool
      */
-    private function setAutoBillFlag($auto_bill) :bool
+    private function setAutoBillFlag($auto_bill): bool
     {
         if ($auto_bill == 'always') {
             return true;

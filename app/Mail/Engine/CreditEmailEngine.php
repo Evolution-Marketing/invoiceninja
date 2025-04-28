@@ -11,12 +11,15 @@
 
 namespace App\Mail\Engine;
 
-use App\Models\Account;
-use App\Utils\HtmlEngine;
 use App\Utils\Ninja;
 use App\Utils\Number;
+use App\Models\Account;
+use App\Utils\HtmlEngine;
+use Illuminate\Support\Str;
+use App\Jobs\Entity\CreateRawPdf;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Lang;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Cache;
 
 class CreditEmailEngine extends BaseEmailEngine
 {
@@ -68,7 +71,6 @@ class CreditEmailEngine extends BaseEmailEngine
                     'company' => $this->credit->company->present()->name(),
                     'amount' => Number::formatMoney($this->credit->balance, $this->client),
                 ],
-                null,
                 $this->client->locale()
             );
 
@@ -88,22 +90,19 @@ class CreditEmailEngine extends BaseEmailEngine
                     'number' => $this->credit->number,
                     'account' => $this->credit->company->present()->name(),
                 ],
-                null,
                 $this->client->locale()
             );
         }
 
         $text_body = trans(
-                'texts.credit_message',
-                [
-                    'credit' => $this->credit->number,
-                    'company' => $this->credit->company->present()->name(),
-                    'amount' => Number::formatMoney($this->credit->balance, $this->client),
-                ],
-                null,
-                $this->client->locale()
-
-            )."\n\n".$this->invitation->getLink();
+            'texts.credit_message',
+            [
+                'credit' => $this->credit->number,
+                'company' => $this->credit->company->present()->name(),
+                'amount' => Number::formatMoney($this->credit->balance, $this->client),
+            ],
+            $this->client->locale()
+        )."\n\n".$this->invitation->getLink();
 
         $this->setTemplate($this->client->getSetting('email_style'))
             ->setContact($this->contact)
@@ -117,24 +116,42 @@ class CreditEmailEngine extends BaseEmailEngine
             ->setTextBody($text_body);
 
         if ($this->client->getSetting('pdf_email_attachment') !== false && $this->credit->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
-            if (Ninja::isHosted()) {
-                $this->setAttachments([$this->credit->pdf_file_path($this->invitation, 'url', true)]);
-            } else {
-                $this->setAttachments([$this->credit->pdf_file_path($this->invitation)]);
+
+            $pdf = ((new CreateRawPdf($this->invitation))->handle());
+
+            if ($this->client->getSetting('embed_documents') && ($this->credit->documents()->where('is_public', true)->count() > 0 || $this->credit->company->documents()->where('is_public', true)->count() > 0)) {
+                $pdf = $this->credit->documentMerge($pdf);
             }
+
+            $this->setAttachments([['file' => base64_encode($pdf), 'name' => $this->credit->numberFormatter().'.pdf']]);
         }
 
         //attach third party documents
         if ($this->client->getSetting('document_email_attachment') !== false && $this->credit->company->account->hasFeature(Account::FEATURE_DOCUMENTS)) {
-
             // Storage::url
-            foreach ($this->credit->documents as $document) {
-                $this->setAttachments([['path' => $document->filePath(), 'name' => $document->name, 'mime' => null]]);
-            }
+            $this->credit->documents()->where('is_public', true)->cursor()->each(function ($document) {
+                if ($document->size > $this->max_attachment_size) {
 
-            foreach ($this->credit->company->documents as $document) {
-                $this->setAttachments([['path' => $document->filePath(), 'name' => $document->name, 'mime' => null]]);
-            }
+                    $hash = Str::random(64);
+                    Cache::put($hash, ['db' => $this->credit->company->db, 'doc_hash' => $document->hash], now()->addDays(7));
+
+                    $this->setAttachmentLinks(["<a class='doc_links' href='" . URL::signedRoute('documents.hashed_download', ['hash' => $hash]) ."'>". $document->name ."</a>"]);
+                } else {
+                    $this->setAttachments([['path' => $document->filePath(), 'name' => $document->name, 'mime' => null, 'file' => base64_encode($document->getFile())]]);
+                }
+            });
+
+            $this->credit->company->documents()->where('is_public', true)->cursor()->each(function ($document) {
+                if ($document->size > $this->max_attachment_size) {
+
+                    $hash = Str::random(64);
+                    Cache::put($hash, ['db' => $this->credit->company->db, 'doc_hash' => $document->hash], now()->addDays(7));
+
+                    $this->setAttachmentLinks(["<a class='doc_links' href='" . URL::signedRoute('documents.hashed_download', ['hash' => $hash]) ."'>". $document->name ."</a>"]);
+                } else {
+                    $this->setAttachments([['path' => $document->filePath(), 'name' => $document->name, 'mime' => null, 'file' => base64_encode($document->getFile())]]);
+                }
+            });
         }
 
         return $this;

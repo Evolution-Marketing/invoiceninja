@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -28,75 +28,137 @@ class StoreInvoiceRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', Invoice::class);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('create', Invoice::class);
     }
 
     public function rules()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $rules = [];
 
-        if ($this->input('documents') && is_array($this->input('documents'))) {
-            $documents = count($this->input('documents'));
+        $rules['client_id'] = ['required', 'bail', Rule::exists('clients', 'id')->where('company_id', $user->company()->id)->where('is_deleted', 0)];
 
-            foreach (range(0, $documents) as $index) {
-                $rules['documents.'.$index] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-            }
-        } elseif ($this->input('documents')) {
-            $rules['documents'] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
+        if ($this->file('documents') && is_array($this->file('documents'))) {
+            $rules['documents.*'] = $this->fileValidation();
+        } elseif ($this->file('documents')) {
+            $rules['documents'] = $this->fileValidation();
+        } else {
+            $rules['documents'] = 'bail|sometimes|array';
         }
 
-        if ($this->input('file') && is_array($this->input('file'))) {
-            $documents = count($this->input('file'));
-
-            foreach (range(0, $documents) as $index) {
-                $rules['file.'.$index] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-            }
-        } elseif ($this->input('file')) {
-            $rules['file'] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
+        if ($this->file('file') && is_array($this->file('file'))) {
+            $rules['file.*'] = $this->fileValidation();
+        } elseif ($this->file('file')) {
+            $rules['file'] = $this->fileValidation();
         }
 
-        $rules['client_id'] = 'bail|required|exists:clients,id,company_id,'.auth()->user()->company()->id.',is_deleted,0';
-        // $rules['client_id'] = ['required', Rule::exists('clients')->where('company_id', auth()->user()->company()->id)];
+        $rules['number'] = ['bail', 'nullable', Rule::unique('invoices')->where('company_id', $user->company()->id)];
 
-        $rules['invitations.*.client_contact_id'] = 'distinct';
-
-        $rules['number'] = ['bail', 'nullable', Rule::unique('invoices')->where('company_id', auth()->user()->company()->id)];
+        $rules['invitations'] = 'sometimes|bail|array';
+        $rules['invitations.*.client_contact_id'] = 'bail|required|distinct';
 
         $rules['project_id'] = ['bail', 'sometimes', new ValidProjectForClient($this->all())];
         $rules['is_amount_discount'] = ['boolean'];
 
+        $rules['date'] = 'bail|sometimes|date:Y-m-d';
+        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', Rule::requiredIf(fn () => strlen($this->partial_due_date ?? '') > 1), 'date'];
+
         $rules['line_items'] = 'array';
-        $rules['discount'] = 'sometimes|numeric';
+        $rules['discount'] = 'sometimes|numeric|max:99999999999999';
+        $rules['tax_rate1'] = 'bail|sometimes|numeric';
+        $rules['tax_rate2'] = 'bail|sometimes|numeric';
+        $rules['tax_rate3'] = 'bail|sometimes|numeric';
+        $rules['tax_name1'] = 'bail|sometimes|string|nullable';
+        $rules['tax_name2'] = 'bail|sometimes|string|nullable';
+        $rules['tax_name3'] = 'bail|sometimes|string|nullable';
+        $rules['exchange_rate'] = 'bail|sometimes|numeric';
+        $rules['partial'] = 'bail|sometimes|nullable|numeric|gte:0';
+        $rules['partial_due_date'] = ['bail', 'sometimes', 'nullable', 'exclude_if:partial,0', 'date', 'before:due_date', 'after_or_equal:date'];
+        $rules['amount'] = ['sometimes', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge1'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge2'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge3'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['custom_surcharge4'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['location_id'] = ['nullable', 'sometimes','bail', Rule::exists('locations', 'id')->where('company_id', $user->company()->id)->where('client_id', $this->client_id)];
 
         return $rules;
     }
 
     public function prepareForValidation()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $client_id = is_string($this->input('client_id', '')) ? $this->input('client_id') : '';
+
+        if (\Illuminate\Support\Facades\Cache::has($this->ip()."|INVOICE|".$client_id."|".$user->company()->company_key)) {
+            usleep(200000);
+        }
+
+        \Illuminate\Support\Facades\Cache::put($this->ip()."|INVOICE|".$client_id."|".$user->company()->company_key, 1);
+
         $input = $this->all();
 
         $input = $this->decodePrimaryKeys($input);
 
-        if (isset($input['line_items']) && is_array($input['line_items'])) {
-            $input['line_items'] = isset($input['line_items']) ? $this->cleanItems($input['line_items']) : [];
-        }
-
         $input['amount'] = 0;
         $input['balance'] = 0;
 
-        if (array_key_exists('tax_rate1', $input) && is_null($input['tax_rate1'])) {
+        if (isset($input['line_items']) && is_array($input['line_items'])) {
+            $input['line_items'] = isset($input['line_items']) ? $this->cleanItems($input['line_items']) : [];
+            $input['line_items'] = $this->cleanFeeItems($input['line_items']);
+            $input['amount'] = $this->entityTotalAmount($input['line_items']);
+        }
+        if (isset($input['partial']) && $input['partial'] == 0) {
+            $input['partial_due_date'] = null;
+        }
+        if (!isset($input['tax_rate1'])) {
             $input['tax_rate1'] = 0;
         }
-        if (array_key_exists('tax_rate2', $input) && is_null($input['tax_rate2'])) {
+        if (!isset($input['tax_rate2'])) {
             $input['tax_rate2'] = 0;
         }
-        if (array_key_exists('tax_rate3', $input) && is_null($input['tax_rate3'])) {
+        if (!isset($input['tax_rate3'])) {
             $input['tax_rate3'] = 0;
         }
         if (array_key_exists('exchange_rate', $input) && is_null($input['exchange_rate'])) {
             $input['exchange_rate'] = 1;
+        }
+        if (!isset($input['date'])) {
+            $input['date'] = now()->addSeconds($user->company()->utc_offset())->format('Y-m-d');
+        }
+        //handles edge case where we need for force set the due date of the invoice.
+        if ((isset($input['partial_due_date']) && strlen($input['partial_due_date']) > 1) && (!array_key_exists('due_date', $input) || (empty($input['due_date']) && empty($this->invoice->due_date)))) {
+            $client = \App\Models\Client::withTrashed()->find($input['client_id']);
+
+            if ($client) {
+                $input['due_date'] = \Illuminate\Support\Carbon::parse($input['date'])->addDays((int)$client->getSetting('payment_terms'))->format('Y-m-d');
+            }
+        }
+
+        if (isset($input['footer']) && $this->hasHeader('X-REACT')) {
+            $input['footer'] = str_replace("\n", "", $input['footer']);
+        }
+
+        if (isset($input['public_notes']) && $this->hasHeader('X-REACT')) {
+            $input['public_notes'] = str_replace("\n", "", $input['public_notes']);
+        }
+
+        if (isset($input['private_notes']) && $this->hasHeader('X-REACT')) {
+            $input['private_notes'] = str_replace("\n", "", $input['private_notes']);
+        }
+
+        if (isset($input['terms']) && $this->hasHeader('X-REACT')) {
+            $input['terms'] = str_replace("\n", "", $input['terms']);
         }
 
         $this->replace($input);

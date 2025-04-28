@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -74,7 +74,7 @@ class MolliePaymentDriver extends BaseDriver
         GatewayType::IDEAL => IDEAL::class,
     ];
 
-    const SYSTEM_LOG_TYPE = SystemLog::TYPE_MOLLIE;
+    public const SYSTEM_LOG_TYPE = SystemLog::TYPE_MOLLIE;
 
     public function init(): self
     {
@@ -156,7 +156,7 @@ class MolliePaymentDriver extends BaseDriver
                 return [
                     'transaction_reference' => $refund->id,
                     'transaction_response' => json_encode($refund),
-                    'success' => $refund->status === 'refunded' ? true : false,
+                    'success' => $refund->status === 'refunded' ? true : false, //@phpstan-ignore-line
                     'description' => $refund->description,
                     'code' => 200,
                 ];
@@ -171,7 +171,7 @@ class MolliePaymentDriver extends BaseDriver
             ];
         } catch (ApiException $e) {
             SystemLogger::dispatch(
-                ['server_response' => $refund, 'data' => request()->all()],
+                ['server_response' => $e->getMessage(), 'data' => request()->all()],
                 SystemLog::CATEGORY_GATEWAY_RESPONSE,
                 SystemLog::EVENT_GATEWAY_FAILURE,
                 SystemLog::TYPE_MOLLIE,
@@ -194,7 +194,7 @@ class MolliePaymentDriver extends BaseDriver
     public function tokenBilling(ClientGatewayToken $cgt, PaymentHash $payment_hash)
     {
         $amount = array_sum(array_column($payment_hash->invoices(), 'amount')) + $payment_hash->fee_total;
-        $invoice = Invoice::whereIn('id', $this->transformKeys(array_column($payment_hash->invoices(), 'invoice_id')))->withTrashed()->first();
+        $invoice = Invoice::query()->whereIn('id', $this->transformKeys(array_column($payment_hash->invoices(), 'invoice_id')))->withTrashed()->first();
 
         if ($invoice) {
             $description = "Invoice {$invoice->number} for {$amount} for client {$this->client->present()->name()}";
@@ -218,11 +218,12 @@ class MolliePaymentDriver extends BaseDriver
                 'customerId' => $cgt->gateway_customer_reference,
                 'sequenceType' => 'recurring',
                 'description' => $description,
+                'idempotencyKey' => uniqid("st", true),
                 'webhookUrl'  => $this->company_gateway->webhookUrl(),
             ]);
 
             if ($payment->status === 'paid') {
-                $this->confirmGatewayFee($request);
+
 
                 $data = [
                     'payment_method' => $cgt->token,
@@ -231,6 +232,8 @@ class MolliePaymentDriver extends BaseDriver
                     'transaction_reference' => $payment->id,
                     'gateway_type_id' => GatewayType::CREDIT_CARD,
                 ];
+
+                $this->confirmGatewayFee($data);
 
                 $payment = $this->createPayment($data, Payment::STATUS_COMPLETED);
 
@@ -283,7 +286,8 @@ class MolliePaymentDriver extends BaseDriver
     public function processWebhookRequest(PaymentWebhookRequest $request)
     {
         // Allow app to catch up with webhook request.
-        sleep(2);
+        // sleep(4);
+        usleep(rand(1500000, 4000000));
 
         $validator = Validator::make($request->all(), [
             'id' => ['required', 'starts_with:tr'],
@@ -321,7 +325,6 @@ class MolliePaymentDriver extends BaseDriver
                 // record from the meta data in the payment hash.
 
                 if ($payment && property_exists($payment->metadata, 'hash') && $payment->metadata->hash) {
-
                     /* Harvest Payment Hash*/
                     $payment_hash = PaymentHash::where('hash', $payment->metadata->hash)->first();
 
@@ -333,7 +336,10 @@ class MolliePaymentDriver extends BaseDriver
                         'amount' => $amount = array_sum(array_column($payment_hash->invoices(), 'amount')) + $payment_hash->fee_total,
                         'payment_type' => $payment->metadata->payment_type_id,
                         'transaction_reference' => $payment->id,
+                        'idempotency_key' => substr("{$payment->id}{$payment_hash->hash}", 0, 64)
                     ];
+
+                    $this->confirmGatewayFee($data);
 
                     $record = $this->createPayment(
                         $data,
@@ -351,7 +357,7 @@ class MolliePaymentDriver extends BaseDriver
 
             if ($record) {
                 if (in_array($payment->status, ['canceled', 'expired', 'failed'])) {
-                    $record->service()->deletePayment();
+                    $record->service()->deletePayment(false); //sometimes mollie does not return but we still decrement the paid to date, this is incorrect.
                 }
 
                 $record->status_id = $codes[$payment->status];
@@ -419,5 +425,20 @@ class MolliePaymentDriver extends BaseDriver
     public function convertToMollieAmount($amount): string
     {
         return \number_format((float) $amount, 2, '.', '');
+    }
+
+    public function auth(): bool
+    {
+        $this->init();
+
+        try {
+            $p = $this->gateway->payments->page();
+            return true;
+        } catch (\Exception $e) {
+
+        }
+
+        return false;
+
     }
 }

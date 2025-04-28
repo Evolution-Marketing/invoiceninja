@@ -12,7 +12,6 @@
 namespace Database\Seeders;
 
 use App\Models\Design;
-use App\Services\PdfMaker\Design as PdfMakerDesign;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
 
@@ -38,6 +37,7 @@ class DesignSeeder extends Seeder
             ['id' => 8, 'name' => 'Hipster', 'user_id' => null, 'company_id' => null, 'is_custom' => false, 'design' => '', 'is_active' => true],
             ['id' => 9, 'name' => 'Playful', 'user_id' => null, 'company_id' => null, 'is_custom' => false, 'design' => '', 'is_active' => true],
             ['id' => 10, 'name' => 'Tech', 'user_id' => null, 'company_id' => null, 'is_custom' => false, 'design' => '', 'is_active' => true],
+            ['id' => 11, 'name' => 'Calm', 'user_id' => null, 'company_id' => null, 'is_custom' => false, 'design' => '', 'is_active' => true],
         ];
 
         foreach ($designs as $design) {
@@ -48,9 +48,9 @@ class DesignSeeder extends Seeder
             }
         }
 
-        foreach (Design::all() as $design) {
-            $template = new PdfMakerDesign(strtolower($design->name));
-            $template->document();
+        foreach (Design::where('is_custom', false)->get() as $design) {
+            
+            $template = new \App\Services\Pdf\DesignExtractor($design->name);
 
             $design_object = new \stdClass;
             $design_object->includes = $template->getSectionHTML('style');

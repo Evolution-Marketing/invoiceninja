@@ -1,10 +1,10 @@
 <?php
 /**
- * client Ninja (https://clientninja.com).
+ * Invoice Ninja (https://invoiceninja.com).
  *
- * @link https://github.com/clientninja/clientninja source repository
+ * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. client Ninja LLC (https://clientninja.com)
+ * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -35,8 +35,8 @@ class InvoiceTransformer extends BaseTransformer
             'company_id' => $this->company->id,
             'client_id'  => $this->getClient($this->getString($data, 'Client'), null),
             'number'     => $this->getString($data, 'Details'),
-            'date'       => isset($data['Date']) ? date('Y-m-d', strtotime($data['Date'])) : null,
-            'due_date'   => isset($data['Due']) ? date('Y-m-d', strtotime($data['Due'])) : null,
+            'date'       => isset($data['Date']) ? $this->parseDate($data['Date']) : null,
+            'due_date'   => isset($data['Due']) ? $this->parseDate($data['Due']) : null,
             'status_id'  => Invoice::STATUS_SENT,
             'line_items' => [
                 [

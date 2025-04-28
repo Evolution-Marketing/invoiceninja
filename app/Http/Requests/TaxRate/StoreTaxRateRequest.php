@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -20,16 +20,22 @@ class StoreTaxRateRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->isAdmin();
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->isAdmin();
     }
 
     public function rules()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         return [
-            //'name' => 'required',
-            'name' => 'required|unique:tax_rates,name,null,null,company_id,'.auth()->user()->companyId().',deleted_at,NULL',
+            'name' => 'required|unique:tax_rates,name,null,null,company_id,'.$user->companyId().',deleted_at,NULL',
             'rate' => 'required|numeric',
         ];
     }

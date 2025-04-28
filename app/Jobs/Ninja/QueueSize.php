@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,11 +19,13 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Queue;
 use Turbo124\Beacon\Facades\LightLogs;
-use Turbo124\Beacon\Jobs\Database\MySQL\DbStatus;
 
 class QueueSize implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     /**
      * Create a new job instance.
@@ -40,9 +42,9 @@ class QueueSize implements ShouldQueue
      *
      * @return void
      */
-    public function handle()
+    public function handle(): void
     {
         LightLogs::create(new QueueSizeAnalytic(Queue::size()))
-         ->queue();
+         ->send();
     }
 }

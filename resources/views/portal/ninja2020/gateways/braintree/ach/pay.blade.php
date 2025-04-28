@@ -43,7 +43,7 @@
 @endsection
 
 @push('footer')
-    <script>
+    <script defer>
         Array
             .from(document.getElementsByClassName('toggle-payment-with-token'))
             .forEach((element) => element.addEventListener('click', (element) => {
@@ -55,5 +55,14 @@
 
             document.getElementById('server-response').submit();
         });
+
+    /**
+    * @type {HTMLInputElement|null}
+    */
+    const first = document.querySelector('input[name="payment-type"]');
+
+    if (first) {
+        first.click();
+    }
     </script>
 @endpush

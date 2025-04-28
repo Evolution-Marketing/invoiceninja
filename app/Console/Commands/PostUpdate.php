@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,12 +12,14 @@
 namespace App\Console\Commands;
 
 use App\Jobs\Util\VersionCheck;
-use App\Utils\Ninja;
+use App\Utils\Traits\AppSetup;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 
 class PostUpdate extends Command
 {
+    use AppSetup;
+
     /**
      * The name and signature of the console command.
      *
@@ -52,20 +54,14 @@ class PostUpdate extends Command
 
         info('finished migrating');
 
-        $output = [];
-
-        // exec('vendor/bin/composer install --no-dev -o', $output);
-
-        info(print_r($output, 1));
-        info('finished running composer install ');
-
         try {
-            Artisan::call('optimize');
+            // Artisan::call('optimize');
+            Artisan::call('config:clear');
         } catch (\Exception $e) {
-            info("I wasn't able to optimize.");
+            info("I wasn't able to clear config.");
         }
 
-        info('optimized');
+        info('cleared config');
 
         try {
             Artisan::call('view:clear');
@@ -83,6 +79,7 @@ class PostUpdate extends Command
 
         info('queue restarted');
 
+        Artisan::call('cache:clear');
         VersionCheck::dispatch();
 
         info('Sent for version check');

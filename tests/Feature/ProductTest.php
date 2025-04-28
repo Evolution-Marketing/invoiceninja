@@ -11,18 +11,20 @@
 
 namespace Tests\Feature;
 
+use App\DataMapper\InvoiceItem;
+use Tests\TestCase;
+use App\Models\Invoice;
 use App\Models\Product;
+use Tests\MockAccountData;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Session;
-use Tests\MockAccountData;
-use Tests\TestCase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 /**
- * @test
- * @covers App\Http\Controllers\ProductController
+ * 
+ *  App\Http\Controllers\ProductController
  */
 class ProductTest extends TestCase
 {
@@ -30,7 +32,9 @@ class ProductTest extends TestCase
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected $faker;
+
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -45,6 +49,141 @@ class ProductTest extends TestCase
         );
 
         $this->makeTestData();
+        $this->withoutExceptionHandling();
+
+    }
+
+    public function testRequiredFields()
+    {
+        
+        $product = [
+            'cost' => 10,
+            'vendor_id' => $this->vendor->hashed_id
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->postJson('/api/v1/products', $product)
+        ->assertStatus(200);
+
+        $arr = $response->json();
+
+        $p = Product::find($this->decodePrimaryKey($arr['data']['id']));
+
+        $this->assertNull($p->vendor_id);
+    }
+
+    public function testProductCostMigration()
+    {
+        $items = [];
+
+        $item = new InvoiceItem();
+        $item->product_cost = 0;
+        $item->product_key = 'test';
+        $item->quantity = 1;
+        $item->cost = 10;
+        $item->notes = 'product';
+
+        $items[] = $item;
+
+        $p = Product::factory()
+            ->create([
+                'user_id' => $this->user->id,
+                'company_id' => $this->company->id,
+                'product_key' => 'test',
+                'cost' => 10,
+                'price' => 20,
+                'quantity' => 1,
+                'notes' => 'product',
+            ]);
+
+        $i = Invoice::factory()
+                ->create([
+                    'client_id' => $this->client->id,
+                    'company_id' => $this->company->id,
+                    'user_id' => $this->user->id,
+                    'line_items' => $items,
+                ]);
+
+
+        $line_items = $i->line_items;
+
+        $this->assertEquals(0, $line_items[0]->product_cost);
+
+        Invoice::withTrashed()
+            ->where('is_deleted', false)
+            ->cursor()
+            ->each(function (Invoice $invoice) {
+
+                $line_items = $invoice->line_items;
+
+                foreach ($line_items as $key => $item) {
+
+                    if($product = Product::where('company_id', $invoice->company_id)->where('product_key', $item->product_key)->where('cost', '>', 0)->first()) {
+                        if((property_exists($item, 'product_cost') && $item->product_cost == 0) || !property_exists($item, 'product_cost')) {
+                            $line_items[$key]->product_cost = $product->cost;
+                        }
+                    }
+
+                }
+
+                $invoice->line_items = $line_items;
+                $invoice->saveQuietly();
+
+
+            });
+
+
+        $i = $i->fresh();
+        $line_items = $i->line_items;
+
+        $this->assertEquals(10, $line_items[0]->product_cost);
+
+
+    }
+
+    public function testSetTaxId()
+    {
+        $p = Product::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id
+        ]);
+
+
+        $this->assertEquals(1, $p->tax_id);
+
+        $update = [
+            'ids' => [$p->hashed_id],
+            'action' => 'set_tax_id',
+            'tax_id' => 6,
+        ];
+
+        $response = false;
+
+        try {
+            $response = $this->withHeaders([
+                'X-API-SECRET' => config('ninja.api_secret'),
+                'X-API-TOKEN' => $this->token,
+            ])->post('/api/v1/products/bulk', $update)
+            ->assertStatus(200);
+        } catch(\Exception $e) {
+
+        }
+
+        $p = $p->fresh();
+
+        $this->assertEquals(6, $p->tax_id);
+
+    }
+
+    public function testProductGetProductKeyFilter()
+    {
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->get('/api/v1/products?product_key=xx')
+        ->assertStatus(200);
     }
 
     public function testProductList()

@@ -11,13 +11,19 @@
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         font-family: $font_name, Helvetica, sans-serif;
-        font-size: "$font_size";
+        font-size: $font_size !important;
         zoom: 80%;
+    }
+
+    table tr td,
+    table tr,
+    th {
+        font-size: $font_size !important;
     }
 
     html {
         width: 210mm;
-        height: 200mm;     
+        height: 200mm;
     }
 
     @page {
@@ -26,15 +32,14 @@
         margin-top: 1rem;
     }
 
-
     p {
         margin: 0;
         padding: 0;
     }
 
     .header-wrapper {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
         gap: 20px;
         padding: 1rem 0rem 0rem 2rem;
     }
@@ -43,39 +48,58 @@
         background-color: var(--primary-color);
         padding: 0.5rem;
         border-radius: 10px;
+        align-self: flex-start;
     }
 
-    #entity-details p { 
-        margin-right: 20px; 
+    #entity-details p {
+        margin-right: 20px;
         white-space: nowrap;
+        --tw-space-y-reverse: 0;
+        margin-top: calc(.5rem * calc(1 - var(--tw-space-y-reverse)));
+        margin-bottom: calc(.5rem * var(--tw-space-y-reverse));
     }
 
     .header-wrapper #entity-details {
         width: 100%;
         color: white;
         text-align: left;
+        line-height: 1.2;
     }
 
-    .header-wrapper #entity-details > tr,
+    .header-wrapper #entity-details>tr,
     .header-wrapper #entity-details th {
         font-weight: normal;
     }
 
     .company-logo {
-        max-width: 65%;
+        /*        max-width: 65%;*/
+        max-width: $company_logo_size;
     }
 
     .contacts-wrapper {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 40px;
-        padding: 1rem 0rem 0rem 2rem;
+        gap: 0px;
+        padding: 1rem 0rem 0rem 1rem;
+        grid-template-columns: 1fr 1fr auto;
+        grid-template-areas: "a b c";
+        grid-auto-columns: minmax(0, 5fr);
+        grid-auto-flow: column;
+        justify-content: space-between;
+        margin-left: 1rem;
+
     }
 
     .contacts-wrapper .contact-label {
         font-weight: bold;
         color: var(--primary-color);
         margin-left: 1rem;
+    }
+
+    .contacts-wrapper .shipping-label {
+        font-weight: bold;
+        color: var(--primary-color);
+        margin-left: 1rem;
+        display: $show_shipping_address;
     }
 
     .contacts-wrapper #company-address,
@@ -86,9 +110,15 @@
         margin-bottom: 0.5rem;
     }
 
+    .contacts-wrapper #shipping-details {
+        display: $show_shipping_address;
+        flex-direction: column;
+        margin-bottom: 0.5rem;
+    }
+
     .contacts-wrapper .company-info {
         margin-top: 1rem;
-        padding: 1rem;
+        padding-top: 1rem;
         border-top: 1px solid var(--primary-color);
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -97,20 +127,44 @@
 
     .contacts-wrapper #client-details {
         margin-top: 1rem;
-        padding: 1rem;
+        padding-top: 1rem;
         border-top: 1px solid var(--primary-color);
     }
 
-    .contact-wrapper-left-side,
+    .contacts-wrapper #vendor-details {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--primary-color);
+    }
+
+    .contacts-wrapper #shipping-details {
+        margin-top: 1rem;
+        padding: 1rem;
+        padding-right: 0rem;
+        border-top: 1px solid var(--primary-color);
+    }
+
+
+    .contact-wrapper-left-side {
+        border-bottom: 1px solid var(--primary-color);
+    }
+
     .contact-wrapper-right-side {
         border-bottom: 1px solid var(--primary-color);
+        margin-left: 20px;
+    }
+
+    .shipping-wrapper-right-side {
+        border-bottom: 1px solid var(--primary-color);
+        display: $show_shipping_address_block;
+        margin-left: 20px;
     }
 
     [data-ref="table"] {
         padding-left: 2rem;
         padding-right: 0rem;
         margin-top: 1rem;
-        margin-bottom: 50px;
+        margin-bottom: 5px;
         min-width: 100%;
         table-layout: fixed;
         overflow-wrap: break-word;
@@ -122,42 +176,41 @@
         color: grey;
     }
 
-    [data-ref="table"] > thead {
+    [data-ref="table"]>thead {
         text-align: left;
     }
 
-    [data-ref="table"] > thead > tr > th {
+    [data-ref="table"]>thead>tr>th {
         font-size: 1.2rem;
         padding: 1rem;
         background: var(--primary-color);
         color: white;
     }
 
-    [data-ref="table"] > thead tr > th:last-child {
+    th.left-radius {
+        border-top-left-radius: 10px;
+    }
+
+    th.right-radius {
+        border-top-right-radius: 10px;
         text-align: right;
     }
 
-    [data-ref="table"] > thead tr > th:first-child {
-        border-top-left-radius: 10px;
-        border-bottom-left-radius: 10px;
+    td.right-radius {
+        text-align: right;
     }
 
-    [data-ref="table"] > thead tr > th:last-child {
-        border-top-right-radius: 10px;
-        border-bottom-right-radius: 10px;
-    }
-
-    [data-ref="table"] > tbody > tr > td {
+    [data-ref="table"]>tbody>tr>td {
         background-color: #F7F7F7;
         border-bottom: 1px solid var(--primary-color);
         padding: 1rem;
     }
 
-    [data-ref="table"] > tbody > tr > td:first-child {
+    [data-ref="table"]>tbody>tr>td.left-radius {
         color: var(--primary-color);
     }
 
-    [data-ref="table"] > tbody > tr > td:last-child {
+    [data-ref="table"]>tbody>tr>td.right-radius {
         text-align: right;
     }
 
@@ -168,7 +221,7 @@
         gap: 80px;
         padding-left: 2rem;
         padding-right: 0rem;
-        page-break-inside:auto;
+        break-inside: avoid;
         overflow: visible !important;
     }
 
@@ -182,32 +235,13 @@
         margin-top: .75rem;
     }
 
-    #table-totals>.totals-table-right-side> * > :not([hidden]) ~ :not([hidden]) {
+    #table-totals>.totals-table-right-side>*> :not([hidden])~ :not([hidden]) {
         --tw-space-y-reverse: 0;
         margin-top: calc(.75rem * calc(1 - var(--tw-space-y-reverse)));
         margin-bottom: calc(.75rem * var(--tw-space-y-reverse));
     }
 
     #table-totals>.totals-table-right-side>*> :nth-child(2) {
-        text-align: right;
-    }
-
-    #table-totals
-    > *
-    [data-element='product-table-balance-due-label'],
-    #table-totals
-    > *
-    [data-element='product-table-balance-due'] {
-        font-weight: bold;
-    }
-
-    #table-totals
-    > *
-    [data-element='product-table-balance-due'] {
-        color: var(--primary-color);
-    }
-
-    #table-totals > * > :last-child {
         text-align: right;
         padding-right: 1rem;
     }
@@ -221,19 +255,19 @@
         margin-left: -10px;
     }
 
-    #header > * {
+    #header>* {
         padding: 10px;
     }
 
     [data-ref="total_table-footer"] {
         text-align: left;
         padding-left: 2rem;
-        padding-right: rem;
+        padding-right: 2rem;
     }
 
     #footer {
         margin-top: 1rem;
-        page-break-inside:auto;
+        break-inside: avoid;
         overflow: visible !important;
     }
 
@@ -250,9 +284,9 @@
         display: grid;
         grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
         margin-left: -10px;
-   }
+    }
 
-   #footer-colors > * {
+    #footer-colors>* {
         padding: 10px;
     }
 
@@ -270,30 +304,86 @@
     .repeating-header,
     .repeating-header-space {
         height: 20px;
-        page-break-inside:avoid;
-        page-break-before:avoid;
-        page-break-after:avoid;
+        page-break-inside: avoid;
+        page-break-before: avoid;
+        page-break-after: avoid;
     }
 
     .repeating-footer,
     .repeating-footer-space {
         height: 20px;
     }
+
     .repeating-header {
         position: fixed;
         top: 0;
     }
+
     .repeating-footer {
         position: fixed;
         bottom: 0;
     }
 
-    [data-element='product_table-product.description-td'], td {
-        min-width:100%;
+    [data-element='product_table-product.description-td'],
+    td {
+        min-width: 100%;
         max-width: 300px;
-        overflow-wrap: break-word; 
+        overflow-wrap: break-word;
     }
-    
+
+    [data-ref="shipping_address-label"] {
+        display: none;
+    }
+
+    .stamp {
+        transform: rotate(12deg);
+        color: #555;
+        font-size: 3rem;
+        font-weight: 700;
+        border: 0.25rem solid #555;
+        display: inline-block;
+        padding: 0.25rem 1rem;
+        text-transform: uppercase;
+        border-radius: 1rem;
+        font-family: 'Courier';
+        mix-blend-mode: multiply;
+        z-index: 200 !important;
+        position: fixed;
+        text-align: center;
+    }
+
+    .is-paid {
+        color: #D23;
+        border: 1rem double #D23;
+        transform: rotate(-5deg);
+        font-size: 6rem;
+        font-family: "Open sans", Helvetica, Arial, sans-serif;
+        border-radius: 0;
+        padding: 0.5rem;
+        opacity: 0.2;
+        z-index: 200 !important;
+        position: fixed;
+        display: $show_paid_stamp;
+
+    }
+
+    .project-header {
+        font-size: 1.2em;
+        margin-top: 0.1em;
+        margin-bottom: 0;
+        padding-bottom: 0;
+        margin-left: 0;
+        margin-right: 0;
+        font-weight: bold;
+        color: #505050;
+    }
+
+    .pqrcode {}
+
+    #qr-bill {
+        width: 100% !important;
+    }
+
     /** Useful snippets, uncomment to enable. **/
 
     /** Hide company logo **/
@@ -323,64 +413,69 @@
     /** For more info, please check our docs: https://invoiceninja.github.io **/
     /** To find out selectors on your own: https://invoiceninja.github.io/docs/custom-fields/#snippets **/
 </style>
+<div id="body">
+    <table style="min-width: 100%">
+        <thead>
+            <tr>
+                <td>
+                    <div class="repeating-header-space">&nbsp;</div>
+                </td>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    <div class="header-wrapper">
+                        <div>
+                            <img class="company-logo" src="$company.logo" alt="$company.name logo">
+                        </div>
+                        <div class="entity-details-wrapper">
+                            <table id="entity-details" cellspacing="0" dir="$dir"></table>
+                        </div>
+                    </div>
+                    <div class="contacts-wrapper">
+                        <div class="contact-wrapper-left-side">
+                            <p class="contact-label">$from_label:</p>
+                            <div class="company-info">
+                                <div id="company-details"></div>
+                                <div id="company-address"></div>
+                            </div>
+                        </div>
+                        <div class="contact-wrapper-right-side">
+                            <p class="contact-label">$to_label:</p>
+                            <div id="client-details"></div>
+                            <div id="vendor-details"></div>
+                        </div>
 
-<table style="min-width: 100%">
-   <thead>
-      <tr>
-         <td>
-            <div class="repeating-header-space">&nbsp;</div>
-         </td>
-      </tr>
-   </thead>
-   <tbody>
-      <tr>
-         <td>
-            <div id="body">
-               <div class="header-wrapper">
-                  <div>
-                     <img class="company-logo" src="$company.logo" alt="$company.name logo">
-                  </div>
-                  <div class="entity-details-wrapper">
-                     <table id="entity-details" cellspacing="0" dir="$dir"></table>
-                  </div>
-               </div>
-               <div class="contacts-wrapper">
-                  <div class="contact-wrapper-left-side">
-                     <p class="contact-label">$from_label:</p>
-                     <div class="company-info">
-                        <div id="company-details"></div>
-                        <div id="company-address"></div>
-                     </div>
-                  </div>
-                  <div class="contact-wrapper-right-side">
-                     <p class="contact-label">$to_label:</p>
-                     <div id="client-details"></div>
-                     <div id="vendor-details"></div>
-                  </div>
-               </div>
-               <table id="product-table" cellspacing="0" data-ref="table"></table>
-               <table id="task-table" cellspacing="0" data-ref="table"></table>
-               <table id="delivery-note-table" cellspacing="0" data-ref="table"></table>
-               <table id="statement-invoice-table" cellspacing="0" data-ref="table"></table>
-               <div id="statement-invoice-table-totals" data-ref="statement-totals"></div>
-               <table id="statement-payment-table" cellspacing="0" data-ref="table"></table>
-               <div id="statement-payment-table-totals" data-ref="statement-totals"></div>
-               <table id="statement-aging-table" cellspacing="0" data-ref="table"></table>
-               <div id="statement-aging-table-totals" data-ref="statement-totals"></div>
-               <div id="table-totals" cellspacing="0"></div>
-            </div>
-         </td>
-      </tr>
-   </tbody>
-   <tfoot>
-      <tr>
-         <td>
-            <div class="repeating-footer-space">&nbsp;</div>
-         </td>
-      </tr>
-   </tfoot>
-</table>
-
+                        <div class="shipping-wrapper-right-side">
+                            <p class="shipping-label">$shipping_label:</p>
+                            <div id="shipping-details"></div>
+                        </div>
+                    </div>
+                    <table id="product-table" cellspacing="0" data-ref="table"></table>
+                    <table id="task-table" cellspacing="0" data-ref="table"></table>
+                    <table id="delivery-note-table" cellspacing="0" data-ref="table"></table>
+                    <table id="statement-invoice-table" cellspacing="0" data-ref="table"></table>
+                    <div id="statement-invoice-table-totals" data-ref="statement-totals"></div>
+                    <table id="statement-payment-table" cellspacing="0" data-ref="table"></table>
+                    <div id="statement-payment-table-totals" data-ref="statement-totals"></div>
+                    <table id="statement-credit-table" cellspacing="0" data-ref="table"></table>
+                    <div id="statement-credit-table-totals" data-ref="statement-totals"></div>
+                    <table id="statement-aging-table" cellspacing="0" data-ref="table"></table>
+                    <div id="statement-aging-table-totals" data-ref="statement-totals"></div>
+                    <div id="table-totals" cellspacing="0">$status_logo</div>
+                </td>
+            </tr>
+        </tbody>
+        <tfoot>
+            <tr>
+                <td>
+                    <div class="repeating-footer-space">&nbsp;</div>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
 <div class="repeating-header">
     <div id="header">
         <div style="background-color: #00968B"><!-- 1 --></div>
@@ -396,8 +491,8 @@
 
 $entity_images
 
-<div class="repeating-footerx"  id="footer">
-    <p data-ref="total_table-footer">$entity_footer</p>
+<div class="repeating-footerx" id="footer">
+    <div data-ref="total_table-footer">$entity_footer</div>
 
     <div id="footer-colors">
         <div style="background-color: #00968B"><!-- 1 --></div>
@@ -410,23 +505,4 @@ $entity_images
         <div style="background-color: #009B8F"><!-- 8 --></div>
     </div>
 
-        <script>
-            // Clear up space a bit, if [product-table, tasks-table, delivery-note-table] isn't present.
-            document.addEventListener('DOMContentLoaded', () => {
-                let tables = [
-                    'product-table', 'task-table', 'delivery-note-table',
-                    'statement-invoice-table', 'statement-payment-table', 'statement-aging-table-totals',
-                    'statement-invoice-table-totals', 'statement-payment-table-totals', 'statement-aging-table',
-                    'client-details','vendor-details'
-                ];
-
-                tables.forEach((tableIdentifier) => {
-                    console.log(document.getElementById(tableIdentifier));
-
-                    document.getElementById(tableIdentifier)?.childElementCount === 0
-                        ? document.getElementById(tableIdentifier).style.setProperty('display', 'none', 'important')
-                        : '';
-                });
-            });
-        </script>
 </div>

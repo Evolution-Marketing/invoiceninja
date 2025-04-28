@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -101,8 +101,9 @@ class AuthorizePaymentMethod
             $gateway_customer_reference = (new AuthorizeCreateCustomer($this->authorize, $this->authorize->client))->create($data);
             $payment_profile = $this->addPaymentMethodToClient($gateway_customer_reference, $data);
 
-            $this->createClientGatewayToken($payment_profile, $gateway_customer_reference);
         }
+
+        $this->createClientGatewayToken($payment_profile, $gateway_customer_reference);
 
         return redirect()->route('client.payment_methods.index');
     }
@@ -128,7 +129,7 @@ class AuthorizePaymentMethod
 
     public function buildPaymentMethod($payment_profile)
     {
-        $payment_meta = new stdClass;
+        $payment_meta = new stdClass();
         $payment_meta->exp_month = 'xx';
         $payment_meta->exp_year = 'xx';
         $payment_meta->brand = (string) $payment_profile->getPaymentProfile()->getPayment()->getCreditCard()->getCardType();
@@ -168,6 +169,10 @@ class AuthorizePaymentMethod
             $billto->setCity(substr($this->authorize->client->city, 0, 40));
             $billto->setState(substr($this->authorize->client->state, 0, 40));
             $billto->setZip(substr($this->authorize->client->postal_code, 0, 20));
+
+            if (isset($contact->email) && str_contains($contact->email, '@')) {
+                $billto->setEmail($contact->email);
+            }
 
             if ($this->authorize->client->country_id) {
                 $billto->setCountry($this->authorize->client->country->name);

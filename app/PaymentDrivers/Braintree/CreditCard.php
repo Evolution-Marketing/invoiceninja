@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -21,8 +21,9 @@ use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
 use App\PaymentDrivers\BraintreePaymentDriver;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 
-class CreditCard
+class CreditCard implements LivewireMethodInterface
 {
     /**
      * @var BraintreePaymentDriver
@@ -53,7 +54,7 @@ class CreditCard
      * Credit card payment page.
      *
      * @param array $data
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     * @return array
      */
 
     private function threeDParameters(array $data)
@@ -66,7 +67,7 @@ class CreditCard
                 'surname' => $this->braintree->client->present()->last_name() ?: '',
                 'phoneNumber' => $this->braintree->client->present()->phone(),
                 'streetAddress' => $this->braintree->client->address1 ?: '',
-                'extendedAddress' =>$this->braintree->client->address2 ?: '',
+                'extendedAddress' => $this->braintree->client->address2 ?: '',
                 'locality' => $this->braintree->client->city ?: '',
                 'postalCode' => $this->braintree->client->postal_code ?: '',
                 'countryCodeAlpha2' => $this->braintree->client->country ? $this->braintree->client->country->iso_3166_2 : 'US',
@@ -76,17 +77,7 @@ class CreditCard
 
     public function paymentView(array $data)
     {
-        $data['gateway'] = $this->braintree;
-        $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
-        $data['threeds'] = $this->threeDParameters($data);
-        $data['threeds_enable'] = $this->braintree->company_gateway->getConfigField('threeds') ? "true" : "false";
-        
-        if ($this->braintree->company_gateway->getConfigField('merchantAccountId')) {
-            /** https://developer.paypal.com/braintree/docs/reference/request/client-token/generate#merchant_account_id */
-            $data['client_token'] = $this->braintree->gateway->clientToken()->generate([
-                'merchantAccountId' => $this->braintree->company_gateway->getConfigField('merchantAccountId'),
-            ]);
-        }
+        $data = $this->paymentData($data);
 
         return render('gateways.braintree.credit_card.pay', $data);
     }
@@ -100,8 +91,8 @@ class CreditCard
      */
     public function paymentResponse(PaymentResponseRequest $request)
     {
-        // nlog($request->all());
-        
+        $this->braintree->client->fresh();
+
         $state = [
             'server_response' => json_decode($request->gateway_response),
             'payment_hash' => $request->payment_hash,
@@ -118,12 +109,20 @@ class CreditCard
         $token = $this->getPaymentToken($request->all(), $customer->id);
 
         $data = [
-            'amount' => $this->braintree->payment_hash->data->amount_with_fee,
+            'amount' => $this->braintree->payment_hash->data->amount_with_fee, //@phpstan-ignore-line
             'paymentMethodToken' => $token,
             'deviceData' => $state['client-data'],
             'options' => [
                 'submitForSettlement' => true,
             ],
+            'channel' => 'invoiceninja_BT',
+            'billing' => [
+                'streetAddress' => $this->braintree->client->address1 ?: '',
+                'extendedAddress' => $this->braintree->client->address2 ?: '',
+                'locality' => $this->braintree->client->city ?: '',
+                'postalCode' => $this->braintree->client->postal_code ?: '',
+                'countryCodeAlpha2' => $this->braintree->client->country ? $this->braintree->client->country->iso_3166_2 : 'US',
+            ]
         ];
 
         if ($this->braintree->company_gateway->getConfigField('merchantAccountId')) {
@@ -146,7 +145,7 @@ class CreditCard
         }
 
         if ($result->success) {
-            $this->braintree->logSuccessfulGatewayResponse(['response' => $request->server_response, 'data' => $this->braintree->payment_hash], SystemLog::TYPE_BRAINTREE);
+            $this->braintree->logSuccessfulGatewayResponse(['response' => $request->server_response, 'data' => $this->braintree->payment_hash->data], SystemLog::TYPE_BRAINTREE);
 
             if ($request->store_card && is_null($request->token)) {
                 $payment_method = $this->braintree->gateway->paymentMethod()->find($token);
@@ -176,6 +175,13 @@ class CreditCard
             'options' => [
                 'verifyCard' => true,
             ],
+            'billingAddress' => [
+                'streetAddress' => $this->braintree->client->address1 ?: '',
+                'extendedAddress' => $this->braintree->client->address2 ?: '',
+                'locality' => $this->braintree->client->city ?: '',
+                'postalCode' => $this->braintree->client->postal_code ?: '',
+                'countryCodeAlpha2' => $this->braintree->client->country ? $this->braintree->client->country->iso_3166_2 : 'US',
+            ]
         ];
 
         if ($this->braintree->company_gateway->getConfigField('merchantAccountId')) {
@@ -224,7 +230,7 @@ class CreditCard
      */
     private function processUnsuccessfulPayment($response)
     {
-        $this->braintree->sendFailureMail($response->transaction->additionalProcessorResponse);
+        $this->braintree->sendFailureMail($response?->transaction?->additionalProcessorResponse);
 
         $message = [
             'server_response' => $response,
@@ -240,13 +246,13 @@ class CreditCard
             $this->braintree->client->company,
         );
 
-        throw new PaymentFailed($response->transaction->additionalProcessorResponse, $response->transaction->processorResponseCode);
+        throw new PaymentFailed($response?->transaction?->additionalProcessorResponse ?: 'Unhandled error, please contact merchant', $response?->transaction?->processorResponseCode ?: 500);
     }
 
     private function storePaymentMethod($method, $customer_reference)
     {
         try {
-            $payment_meta = new \stdClass;
+            $payment_meta = new \stdClass();
             $payment_meta->exp_month = (string) $method->expirationMonth;
             $payment_meta->exp_year = (string) $method->expirationYear;
             $payment_meta->brand = (string) $method->cardType;
@@ -263,5 +269,33 @@ class CreditCard
         } catch (\Exception $e) {
             return $this->braintree->processInternallyFailedPayment($this->braintree, $e);
         }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.braintree.credit_card.pay_livewire';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $data['gateway'] = $this->braintree;
+        $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
+        $data['threeds'] = $this->threeDParameters($data);
+        $data['threeds_enable'] = $this->braintree->company_gateway->getConfigField('threeds') ? "true" : "false";
+
+        if ($this->braintree->company_gateway->getConfigField('merchantAccountId')) {
+            /** https://developer.paypal.com/braintree/docs/reference/request/client-token/generate#merchant_account_id */
+            $data['client_token'] = $this->braintree->gateway->clientToken()->generate([ // @phpstan-ignore-line
+                'merchantAccountId' => $this->braintree->company_gateway->getConfigField('merchantAccountId'),
+            ]);
+        }
+
+        return $data;
     }
 }

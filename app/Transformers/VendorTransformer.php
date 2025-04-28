@@ -4,19 +4,19 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Transformers;
 
+use App\Models\Vendor;
 use App\Models\Activity;
 use App\Models\Document;
-use App\Models\Vendor;
+use App\Models\Location;
 use App\Models\VendorContact;
 use App\Utils\Traits\MakesHash;
-use League\Fractal\Resource\Collection;
 
 /**
  * class VendorTransformer.
@@ -25,7 +25,7 @@ class VendorTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         'contacts',
         'documents',
     ];
@@ -33,14 +33,15 @@ class VendorTransformer extends EntityTransformer
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'activities',
+        'locations',
     ];
 
     /**
      * @param Vendor $vendor
      *
-     * @return Collection
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
     public function includeActivities(Vendor $vendor)
     {
@@ -52,7 +53,7 @@ class VendorTransformer extends EntityTransformer
     /**
      * @param Vendor $vendor
      *
-     * @return Collection
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
     public function includeContacts(Vendor $vendor)
     {
@@ -66,6 +67,18 @@ class VendorTransformer extends EntityTransformer
         $transformer = new DocumentTransformer($this->serializer);
 
         return $this->includeCollection($vendor->documents, $transformer, Document::class);
+    }
+
+    /**
+     * @param Vendor $vendor
+     *
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
+     */
+    public function includeLocations(Vendor $vendor)
+    {
+        $transformer = new LocationTransformer($this->serializer);
+
+        return $this->includeCollection($vendor->locations, $transformer, Location::class);
     }
 
     /**
@@ -103,6 +116,11 @@ class VendorTransformer extends EntityTransformer
             'archived_at' => (int) $vendor->deleted_at,
             'created_at' => (int) $vendor->created_at,
             'number' => (string) $vendor->number ?: '',
+            'language_id' => (string) $vendor->language_id ?: '',
+            'classification' => (string) $vendor->classification ?: '',
+            'display_name' => (string) $vendor->present()->name(),
+            'routing_id' => (string) $vendor->routing_id ?: '',
+            'is_tax_exempt' => (bool) $vendor->is_tax_exempt,
         ];
     }
 }

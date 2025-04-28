@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -21,11 +21,15 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 use Turbo124\Beacon\Facades\LightLogs;
 
 class AdjustEmailQuota implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     /**
      * Create a new job instance.
@@ -59,16 +63,45 @@ class AdjustEmailQuota implements ShouldQueue
     public function adjust()
     {
         Account::query()->cursor()->each(function ($account) {
-            nlog("resetting email quota for {$account->key}");
+            // nlog("resetting email quota for {$account->key}");
 
-            $email_count = Cache::get($account->key);
+            $email_count = Cache::get("email_quota".$account->key);
 
-            if($email_count > 0)
-                LightLogs::create(new EmailCount($email_count, $account->key))->batch();
-
-            Cache::forget($account->key);
-            Cache::forget("throttle_notified:{$account->key}");
-
+            if ($email_count > 0) {
+                try {
+                    LightLogs::create(new EmailCount($email_count, $account->key))->send(); // this runs syncronously
+                } catch (\Exception $e) {
+                    nlog("Exception:: AdjustEmailQuota::" . $e->getMessage());
+                    nlog($e->getMessage());
+                }
+            }
         });
+
+        /** Use redis pipelines to execute bulk deletes efficiently */
+        $redis = Redis::connection('sentinel-cache');
+        $prefix =  config('cache.prefix'). "email_quota*";
+
+        $keys = $redis->keys($prefix);
+
+        if (is_array($keys)) {
+            $redis->pipeline(function ($pipe) use ($keys) {
+                foreach ($keys as $key) {
+                    $pipe->del($key);
+                }
+            });
+        }
+        $keys = null;
+
+        $prefix =  config('cache.prefix'). "throttle_notified*";
+
+        $keys = $redis->keys($prefix);
+
+        if (is_array($keys)) {
+            $redis->pipeline(function ($pipe) use ($keys) {
+                foreach ($keys as $key) {
+                    $pipe->del($key);
+                }
+            });
+        }
     }
 }

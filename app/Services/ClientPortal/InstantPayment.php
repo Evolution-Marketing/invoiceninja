@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,9 +13,6 @@
 namespace App\Services\ClientPortal;
 
 use App\Exceptions\PaymentFailed;
-use App\Factory\PaymentFactory;
-use App\Http\Controllers\Controller;
-use App\Http\Requests\ClientPortal\Payments\PaymentResponseRequest;
 use App\Jobs\Invoice\InjectSignature;
 use App\Jobs\Util\SystemLogger;
 use App\Models\CompanyGateway;
@@ -23,22 +20,20 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentHash;
 use App\Models\SystemLog;
-use App\Services\Subscription\SubscriptionService;
+use App\Utils\Ninja;
 use App\Utils\Number;
 use App\Utils\Traits\MakesDates;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Contracts\View\Factory;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Illuminate\View\View;
 
 class InstantPayment
 {
     use MakesHash;
     use MakesDates;
 
+    /** $request mixed */
     public Request $request;
 
     public function __construct(Request $request)
@@ -48,6 +43,16 @@ class InstantPayment
 
     public function run()
     {
+        /** @var \App\Models\ClientContact $cc */
+        $cc = auth()->guard('contact')->user();
+        $cc->first_name = $this->request->contact_first_name;
+        $cc->last_name = $this->request->contact_last_name;
+        $cc->email = $this->request->contact_email;
+        $cc->client->postal_code = strlen($cc->client->postal_code ?? '') > 1 ? $cc->client->postal_code : $this->request->client_postal_code;
+        $cc->client->city = strlen($cc->client->city ?? '') > 1 ? $cc->client->city : $this->request->client_city;
+        $cc->client->shipping_postal_code = strlen($cc->client->shipping_postal_code ?? '') > 1 ? $cc->client->shipping_postal_code : $cc->client->postal_code;
+        $cc->client->shipping_city = strlen($cc->client->shipping_city ?? '') > 1 ? $cc->client->shipping_city : $cc->client->city;
+        $cc->pushQuietly();
 
         $is_credit_payment = false;
 
@@ -57,7 +62,7 @@ class InstantPayment
             $is_credit_payment = true;
         }
 
-        $gateway = CompanyGateway::find($this->request->input('company_gateway_id'));
+        $gateway = CompanyGateway::query()->find($this->request->input('company_gateway_id'));
 
         /**
          * find invoices
@@ -65,7 +70,8 @@ class InstantPayment
          * ['invoice_id' => xxx, 'amount' => 22.00]
          */
         $payable_invoices = collect($this->request->payable_invoices);
-        $invoices = Invoice::whereIn('id', $this->transformKeys($payable_invoices->pluck('invoice_id')->toArray()))->withTrashed()->get();
+
+        $invoices = Invoice::query()->whereIn('id', $this->transformKeys($payable_invoices->pluck('invoice_id')->toArray()))->withTrashed()->get();
 
         $invoices->each(function ($invoice) {
             $invoice->service()
@@ -88,13 +94,14 @@ class InstantPayment
                 ->with(['message' => 'No payable invoices selected.']);
         }
 
+        $invoices = Invoice::query()->whereIn('id', $this->transformKeys($payable_invoices->pluck('invoice_id')->toArray()))->withTrashed()->get();
+
         $client = $invoices->first()->client;
         $settings = $client->getMergedSettings();
 
         /* This loop checks for under / over payments and returns the user if a check fails */
 
         foreach ($payable_invoices as $payable_invoice) {
-
             /*Match the payable invoice to the Model Invoice*/
 
             $invoice = $invoices->first(function ($inv) use ($payable_invoice) {
@@ -106,7 +113,7 @@ class InstantPayment
              * Determine the payable amount and the max payable. ie either partial or invoice balance
              */
 
-            $payable_amount = Number::roundValue(Number::parseFloat($payable_invoice['amount'], $client->currency()->precision));
+            $payable_amount = Number::roundValue(Number::parseFloat($payable_invoice['amount']), $client->currency()->precision);
             $invoice_balance = Number::roundValue(($invoice->partial > 0 ? $invoice->partial : $invoice->balance), $client->currency()->precision);
 
 
@@ -161,7 +168,7 @@ class InstantPayment
                 return $payable_invoice['invoice_id'] == $inv->hashed_id;
             });
 
-            $payable_amount = Number::roundValue(Number::parseFloat($payable_invoice['amount'], $client->currency()->precision));
+            $payable_amount = Number::roundValue(Number::parseFloat($payable_invoice['amount']), $client->currency()->precision);
             $invoice_balance = Number::roundValue($invoice->balance, $client->currency()->precision);
 
             $payable_invoice['due_date'] = $this->formatDate($invoice->due_date, $invoice->client->date_format());
@@ -181,8 +188,11 @@ class InstantPayment
         }
 
         if ($this->request->has('signature') && ! is_null($this->request->signature) && ! empty($this->request->signature)) {
-            $invoices->each(function ($invoice) {
-                InjectSignature::dispatch($invoice, $this->request->signature);
+
+            $contact_id = auth()->guard('contact')->user() ? auth()->guard('contact')->user()->id : null;
+
+            $invoices->each(function ($invoice) use ($contact_id) {
+                InjectSignature::dispatch($invoice, $contact_id, $this->request->signature, request()->getClientIp());
             });
         }
 
@@ -191,11 +201,13 @@ class InstantPayment
         $payment_method_id = $this->request->input('payment_method_id');
         $invoice_totals = $payable_invoices->sum('amount');
         $first_invoice = $invoices->first();
-        $credit_totals = $first_invoice->client->getSetting('use_credits_payment') == 'always' ? $first_invoice->client->service()->getCreditBalance() : 0;
+        $credit_totals = in_array($first_invoice->client->getSetting('use_credits_payment'), ['always', 'option']) ? $first_invoice->client->service()->getCreditBalance() : 0;
         $starting_invoice_amount = $first_invoice->balance;
 
+        $payment_hash_string = Str::random(32);
+
         if ($gateway) {
-            $first_invoice->service()->addGatewayFee($gateway, $payment_method_id, $invoice_totals)->save();
+            $first_invoice->service()->addGatewayFee($gateway, $payment_method_id, $invoice_totals, $payment_hash_string)->save();
         }
 
         /**
@@ -216,14 +228,29 @@ class InstantPayment
             $credit_totals = 0;
         }
 
-        $hash_data = ['invoices' => $payable_invoices->toArray(), 'credits' => $credit_totals, 'amount_with_fee' => max(0, (($invoice_totals + $fee_totals) - $credit_totals))];
+        /** $hash_data = mixed[] */
+        $hash_data = [
+            'invoices' => $payable_invoices->toArray(),
+            'credits' => $credit_totals,
+            'amount_with_fee' => max(0, (($invoice_totals + $fee_totals) - $credit_totals)),
+            'pre_payment' => $this->request->pre_payment,
+            'frequency_id' => $this->request->frequency_id,
+            'remaining_cycles' => $this->request->remaining_cycles,
+            'is_recurring' => $this->request->is_recurring,
+        ];
 
         if ($this->request->query('hash')) {
             $hash_data['billing_context'] = Cache::get($this->request->query('hash'));
+        } elseif ($this->request->hash) {
+            $hash_data['billing_context'] = Cache::get($this->request->hash);
+        } elseif ($old_hash = PaymentHash::query()->where('fee_invoice_id', $first_invoice->id)->whereNull('payment_id')->orderBy('id', 'desc')->first()) {
+            if (isset($old_hash->data->billing_context)) {
+                $hash_data['billing_context'] = $old_hash->data->billing_context;
+            }
         }
 
-        $payment_hash = new PaymentHash;
-        $payment_hash->hash = Str::random(32);
+        $payment_hash = new PaymentHash();
+        $payment_hash->hash = $payment_hash_string;
         $payment_hash->data = $hash_data;
         $payment_hash->fee_total = $fee_totals;
         $payment_hash->fee_invoice_id = $first_invoice->id;
@@ -252,9 +279,11 @@ class InstantPayment
             'payment_method_id' => $payment_method_id,
             'amount_with_fee' => $invoice_totals + $fee_totals,
             'client' => $client,
+            'pre_payment' => $this->request->pre_payment,
+            'is_recurring' => $this->request->is_recurring,
         ];
 
-        if ($is_credit_payment || $totals <= 0) {
+        if ($is_credit_payment) {
             return $this->processCreditPayment($this->request, $data);
         }
 

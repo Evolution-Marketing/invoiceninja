@@ -12,7 +12,7 @@
     <meta name="only-authorization" content="true">
     <meta name="stripe-token" content="">
     <meta name="client-postal-code" content="{{ $client->postal_code ?? '' }}">
-
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -39,5 +39,5 @@
 
 @section('gateway_footer')
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-credit-card.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-credit-card.js')
 @endsection

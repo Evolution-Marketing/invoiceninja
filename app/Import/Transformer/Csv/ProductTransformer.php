@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -42,6 +42,9 @@ class ProductTransformer extends BaseTransformer
             'custom_value2' => $this->getString($data, 'product.custom_value2'),
             'custom_value3' => $this->getString($data, 'product.custom_value3'),
             'custom_value4' => $this->getString($data, 'product.custom_value4'),
+            'product_image' => $this->getString($data, 'product.image_url'),
+            'in_stock_quantity' => $this->getFloat($data, 'product.in_stock_quantity'),
+            'tax_id' => $this->getNumber($data, 'product.tax_category', 1)
         ];
     }
 }

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,11 +19,19 @@ class PDF extends FPDI
 
     public function Footer()
     {
-        $this->SetXY(0, -5);
+        $this->SetXY(config('ninja.pdf_page_numbering_x_alignment'), config('ninja.pdf_page_numbering_y_alignment'));
+
         $this->SetFont('Arial', 'I', 9);
+
         $this->SetTextColor(135, 135, 135);
 
         $trans = ctrans('texts.pdf_page_info', ['current' => $this->PageNo(), 'total' => '{nb}']);
+
+        try {
+            $trans = mb_convert_encoding($trans, 'ISO-8859-1', 'UTF-8');
+        } catch (\Exception $e) {
+        }
+
         $this->Cell(0, 5, $trans, 0, 0, $this->text_alignment);
     }
 

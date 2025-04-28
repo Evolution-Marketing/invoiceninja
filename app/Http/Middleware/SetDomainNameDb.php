@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -29,7 +29,7 @@ class SetDomainNameDb
     {
         $error = [
             'message' => 'Invalid token',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
         /*
          * Use the host name to set the active DB
@@ -41,7 +41,7 @@ class SetDomainNameDb
 
         $domain_name = $request->getHost();
 
-        if (strpos($domain_name, 'invoicing.co') !== false) {
+        if (strpos($domain_name, config('ninja.app_domain')) !== false) {
             $subdomain = explode('.', $domain_name)[0];
 
             $query = [
@@ -56,8 +56,9 @@ class SetDomainNameDb
                     return response()->json($error, 403);
                 } else {
                     MultiDB::setDb('db-ninja-01');
-                    nlog('I could not set the DB - defaulting to DB1');
-                    //abort(400, 'Domain not found');
+                    nlog('SetDomainNameDb:: I could not set the DB - defaulting to DB1');
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
                 }
             }
         } else {
@@ -73,7 +74,9 @@ class SetDomainNameDb
                     return response()->json($error, 403);
                 } else {
                     MultiDB::setDb('db-ninja-01');
-                    nlog('I could not set the DB - defaulting to DB1');
+                    nlog('SetDomainNameDb:: I could not set the DB - defaulting to DB1');
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
                 }
             }
         }

@@ -11,8 +11,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Client;
-use App\Models\ClientContact;
 use App\Models\Invoice;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Database\Eloquent\Model;
@@ -21,17 +19,13 @@ use Illuminate\Support\Facades\Session;
 use Tests\MockAccountData;
 use Tests\TestCase;
 
-/**
- * @test
- * @covers App\Http\Controllers\InvoiceController
- */
 class ClientDeletedInvoiceCreationTest extends TestCase
 {
     use MakesHash;
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 

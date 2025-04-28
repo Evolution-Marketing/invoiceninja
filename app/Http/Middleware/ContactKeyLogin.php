@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -41,6 +41,7 @@ class ContactKeyLogin
             $request->session()->invalidate();
         }
 
+        //magic links survive for 1 hour
         if ($request->segment(2) && $request->segment(2) == 'magic_link' && $request->segment(3)) {
             $payload = Cache::get($request->segment(3));
 
@@ -66,7 +67,11 @@ class ContactKeyLogin
             }
         } elseif ($request->segment(3) && config('ninja.db.multi_db_enabled')) {
             if (MultiDB::findAndSetDbByContactKey($request->segment(3))) {
-                if ($client_contact = ClientContact::where('contact_key', $request->segment(3))->first()) {
+                if ($client_contact = ClientContact::query()->with('company')->where('contact_key', $request->segment(3))->first()) {
+                    if ($client_contact->company->settings->enable_client_portal_password) {
+                        return redirect()->route('client.login', ['company_key' => $client_contact->company->company_key]);
+                    }
+
                     if (empty($client_contact->email)) {
                         $client_contact->email = Str::random(6).'@example.com';
                     }
@@ -82,7 +87,11 @@ class ContactKeyLogin
                 }
             }
         } elseif ($request->segment(2) && $request->segment(2) == 'key_login' && $request->segment(3)) {
-            if ($client_contact = ClientContact::where('contact_key', $request->segment(3))->first()) {
+            if ($client_contact = ClientContact::with('company')->where('contact_key', $request->segment(3))->first()) {
+                if ($client_contact->company->settings->enable_client_portal_password) {
+                    return redirect()->route('client.login', ['company_key' => $client_contact->company->company_key]);
+                }
+
                 if (empty($client_contact->email)) {
                     $client_contact->email = Str::random(6).'@example.com';
                     $client_contact->save();
@@ -98,7 +107,7 @@ class ContactKeyLogin
             }
         } elseif ($request->has('client_hash') && config('ninja.db.multi_db_enabled')) {
             if (MultiDB::findAndSetDbByClientHash($request->input('client_hash'))) {
-                if ($client = Client::where('client_hash', $request->input('client_hash'))->first()) {
+                if ($client = Client::query()->where('client_hash', $request->input('client_hash'))->first()) {
                     $primary_contact = $client->primary_contact()->first();
 
                     if (empty($primary_contact->email)) {
@@ -112,7 +121,7 @@ class ContactKeyLogin
                 }
             }
         } elseif ($request->has('client_hash')) {
-            if ($client = Client::where('client_hash', $request->input('client_hash'))->first()) {
+            if ($client = Client::query()->where('client_hash', $request->input('client_hash'))->first()) {
                 $primary_contact = $client->primary_contact()->first();
 
                 if (empty($primary_contact->email)) {
@@ -125,7 +134,11 @@ class ContactKeyLogin
                 return redirect($this->setRedirectPath());
             }
         } elseif ($request->segment(3)) {
-            if ($client_contact = ClientContact::where('contact_key', $request->segment(3))->first()) {
+            if ($client_contact = ClientContact::query()->with('company')->where('contact_key', $request->segment(3))->first()) {
+                if ($client_contact->company->settings->enable_client_portal_password) {
+                    return redirect()->route('client.login', ['company_key' => $client_contact->company->company_key]);
+                }
+
                 if (empty($client_contact->email)) {
                     $client_contact->email = Str::random(6).'@example.com';
                     $client_contact->save();
@@ -148,17 +161,19 @@ class ContactKeyLogin
 
     private function setRedirectPath()
     {
-        if (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_INVOICES) {
+        if (auth()->guard('contact')->user()->client->getSetting('enable_client_portal_dashboard') === true) {
+            return '/client/dashboard';
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_INVOICES)) {
             return '/client/invoices';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_RECURRING_INVOICES) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_RECURRING_INVOICES)) {
             return '/client/recurring_invoices';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_QUOTES) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_QUOTES)) {
             return '/client/quotes';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_CREDITS) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_CREDITS)) {
             return '/client/credits';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_TASKS) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_TASKS)) {
             return '/client/tasks';
-        } elseif (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_EXPENSES) {
+        } elseif ((bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_EXPENSES)) {
             return '/client/expenses';
         }
     }

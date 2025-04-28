@@ -41,6 +41,7 @@ return [
             'username'       => env('DB_USERNAME1', env('DB_USERNAME', 'forge')),
             'password'       => env('DB_PASSWORD1', env('DB_PASSWORD', '')),
             'port'           => env('DB_PORT1', env('DB_PORT', '3306')),
+            'unix_socket'    => env('DB_SOCKET1', env('DB_SOCKET', '')),
             'charset'        => 'utf8mb4',
             'collation'      => 'utf8mb4_unicode_ci',
             'prefix'         => '',
@@ -97,22 +98,6 @@ return [
             'options'        => [],
         ],
 
-        'db-ninja-01a' => [
-            'driver'         => 'mysql',
-            'host'           => env('DB_HOST1', env('DB_HOST', '127.0.0.1')),
-            'database'       => env('DB_DATABASE2', env('DB_DATABASE', 'forge')),
-            'username'       => env('DB_USERNAME2', env('DB_USERNAME', 'forge')),
-            'password'       => env('DB_PASSWORD2', env('DB_PASSWORD', '')),
-            'port'           => env('DB_PORT1', env('DB_PORT', '3306')),
-            'charset'        => 'utf8mb4',
-            'collation'      => 'utf8mb4_unicode_ci',
-            'prefix'         => '',
-            'prefix_indexes' => true,
-            'strict'         => env('DB_STRICT', false),
-            'engine'         => 'InnoDB ROW_FORMAT=DYNAMIC',
-            'options'        => [],
-        ],
-
         'db-ninja-02' => [
             'driver'         => 'mysql',
             'host'           => env('DB_HOST2', env('DB_HOST', '127.0.0.1')),
@@ -129,13 +114,13 @@ return [
             'options'        => [],
         ],
 
-        'db-ninja-02a' => [
+        'db-ninja-03' => [
             'driver'         => 'mysql',
-            'host'           => env('DB_HOST2', env('DB_HOST', '127.0.0.1')),
-            'database'       => env('DB_DATABASE1', env('DB_DATABASE', 'forge')),
-            'username'       => env('DB_USERNAME1', env('DB_USERNAME', 'forge')),
-            'password'       => env('DB_PASSWORD1', env('DB_PASSWORD', '')),
-            'port'           => env('DB_PORT2', env('DB_PORT', '3306')),
+            'host'           => env('DB_HOST3', env('DB_HOST', '127.0.0.1')),
+            'database'       => env('DB_DATABASE3', env('DB_DATABASE', 'forge')),
+            'username'       => env('DB_USERNAME3', env('DB_USERNAME', 'forge')),
+            'password'       => env('DB_PASSWORD3', env('DB_PASSWORD', '')),
+            'port'           => env('DB_PORT3', env('DB_PORT', '3306')),
             'charset'        => 'utf8mb4',
             'collation'      => 'utf8mb4_unicode_ci',
             'prefix'         => '',
@@ -200,6 +185,7 @@ return [
                 'replication' => 'sentinel',
                 'service' =>  env('REDIS_SENTINEL_SERVICE', 'mymaster'),
                 'sentinel_timeout' => 3.0,
+                // 'load_balancing' => false,
                 'parameters' => [
                     'password' => env('REDIS_PASSWORD', null),
                     'database' => env('REDIS_DB', 0),
@@ -229,3 +215,11 @@ return [
     ],
 
 ];
+
+/**
+*'replication' => function () {
+*    $strategy = new Predis\Replication\ReplicationStrategy();
+*    $strategy->disableLoadBalancing();
+*    return new Predis\Connection\Replication\SentinelReplication($strategy);
+*}];
+ */

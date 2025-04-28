@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,6 +15,41 @@ use App\Utils\Traits\MakesHash;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\SystemLog
+ *
+ * @property int $id
+ * @property int $company_id
+ * @property int|null $user_id
+ * @property int|null $client_id
+ * @property int|null $category_id
+ * @property int|null $event_id
+ * @property int|null $type_id
+ * @property array $log
+ * @property int|null $created_at
+ * @property int|null $updated_at
+ * @property int|null $deleted_at
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog company()
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog filter(\App\Filters\QueryFilters $filters)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog query()
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereCategoryId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereClientId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereCompanyId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereEventId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereLog($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereTypeId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog whereUserId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|SystemLog withoutTrashed()
+ * @mixin \Eloquent
+ */
 class SystemLog extends Model
 {
     use Filterable;
@@ -31,101 +66,119 @@ class SystemLog extends Model
     protected $dateFormat = 'Y-m-d H:i:s.u';
 
     /* Category IDs */
-    const CATEGORY_GATEWAY_RESPONSE = 1;
+    public const CATEGORY_GATEWAY_RESPONSE = 1;
 
-    const CATEGORY_MAIL = 2;
+    public const CATEGORY_MAIL = 2;
 
-    const CATEGORY_WEBHOOK = 3;
+    public const CATEGORY_WEBHOOK = 3;
 
-    const CATEGORY_PDF = 4;
+    public const CATEGORY_PDF = 4;
 
-    const CATEGORY_SECURITY = 5;
+    public const CATEGORY_SECURITY = 5;
+
+    public const CATEGORY_LOG = 6;
 
     /* Event IDs*/
-    const EVENT_PAYMENT_RECONCILIATION_FAILURE = 10;
+    public const EVENT_PAYMENT_RECONCILIATION_FAILURE = 10;
 
-    const EVENT_PAYMENT_RECONCILIATION_SUCCESS = 11;
+    public const EVENT_PAYMENT_RECONCILIATION_SUCCESS = 11;
 
-    const EVENT_GATEWAY_SUCCESS = 21;
+    public const EVENT_GATEWAY_SUCCESS = 21;
 
-    const EVENT_GATEWAY_FAILURE = 22;
+    public const EVENT_GATEWAY_FAILURE = 22;
 
-    const EVENT_GATEWAY_ERROR = 23;
+    public const EVENT_GATEWAY_ERROR = 23;
 
-    const EVENT_MAIL_SEND = 30;
+    public const EVENT_MAIL_SEND = 30;
 
-    const EVENT_MAIL_RETRY_QUEUE = 31; //we use this to queue emails that are spooled and not sent due to the email queue quota being exceeded.
+    public const EVENT_MAIL_RETRY_QUEUE = 31; //we use this to queue emails that are spooled and not sent due to the email queue quota being exceeded.
 
-    const EVENT_MAIL_BOUNCED = 32;
+    public const EVENT_MAIL_BOUNCED = 32;
 
-    const EVENT_MAIL_SPAM_COMPLAINT = 33;
+    public const EVENT_MAIL_SPAM_COMPLAINT = 33;
 
-    const EVENT_MAIL_DELIVERY = 34;
+    public const EVENT_MAIL_DELIVERY = 34;
 
-    const EVENT_MAIL_OPENED = 35;
+    public const EVENT_MAIL_OPENED = 35;
 
-    const EVENT_WEBHOOK_RESPONSE = 40;
+    public const EVENT_WEBHOOK_RESPONSE = 40;
 
-    const EVENT_WEBHOOK_SUCCESS = 41;
+    public const EVENT_WEBHOOK_SUCCESS = 41;
 
-    const EVENT_PDF_RESPONSE = 50;
+    public const EVENT_WEBHOOK_FAILURE = 42;
 
-    const EVENT_AUTHENTICATION_FAILURE = 60;
+    public const EVENT_PDF_RESPONSE = 50;
 
-    const EVENT_USER = 61;
+    public const EVENT_AUTHENTICATION_FAILURE = 60;
+
+    public const EVENT_USER = 61;
+
+    public const EVENT_INBOUND_MAIL_BLOCKED = 62;
 
     /*Type IDs*/
-    const TYPE_PAYPAL = 300;
+    public const TYPE_PAYPAL = 300;
 
-    const TYPE_STRIPE = 301;
+    public const TYPE_STRIPE = 301;
 
-    const TYPE_LEDGER = 302;
+    public const TYPE_LEDGER = 302;
 
-    const TYPE_FAILURE = 303;
+    public const TYPE_FAILURE = 303;
 
-    const TYPE_CHECKOUT = 304;
+    public const TYPE_CHECKOUT = 304;
 
-    const TYPE_AUTHORIZE = 305;
+    public const TYPE_AUTHORIZE = 305;
 
-    const TYPE_CUSTOM = 306;
+    public const TYPE_CUSTOM = 306;
 
-    const TYPE_BRAINTREE = 307;
+    public const TYPE_BRAINTREE = 307;
 
-    const TYPE_WEPAY = 309;
+    public const TYPE_WEPAY = 309;
 
-    const TYPE_PAYFAST = 310;
+    public const TYPE_PAYFAST = 310;
 
-    const TYPE_PAYTRACE = 311;
+    public const TYPE_PAYTRACE = 311;
 
-    const TYPE_MOLLIE = 312;
+    public const TYPE_MOLLIE = 312;
 
-    const TYPE_EWAY = 313;
-    
-    const TYPE_FORTE = 314;
+    public const TYPE_EWAY = 313;
 
-    const TYPE_SQUARE = 320;
+    public const TYPE_FORTE = 314;
 
-    const TYPE_GOCARDLESS = 321;
+    public const TYPE_SQUARE = 320;
 
-    const TYPE_RAZORPAY = 322;
+    public const TYPE_GOCARDLESS = 321;
 
-    const TYPE_QUOTA_EXCEEDED = 400;
+    public const TYPE_RAZORPAY = 322;
 
-    const TYPE_UPSTREAM_FAILURE = 401;
+    public const TYPE_PAYPAL_PPCP = 323;
 
-    const TYPE_WEBHOOK_RESPONSE = 500;
+    public const TYPE_BTC_PAY = 324;
 
-    const TYPE_PDF_FAILURE = 600;
+    public const TYPE_ROTESSA = 325;
 
-    const TYPE_PDF_SUCCESS = 601;
+    public const TYPE_BLOCKONOMICS = 326;
 
-    const TYPE_MODIFIED = 701;
+    public const TYPE_POWERBOARD = 327;
 
-    const TYPE_DELETED = 702;
+    public const TYPE_QUOTA_EXCEEDED = 400;
 
-    const TYPE_LOGIN_SUCCESS = 800;
+    public const TYPE_UPSTREAM_FAILURE = 401;
 
-    const TYPE_LOGIN_FAILURE = 801;
+    public const TYPE_WEBHOOK_RESPONSE = 500;
+
+    public const TYPE_PDF_FAILURE = 600;
+
+    public const TYPE_PDF_SUCCESS = 601;
+
+    public const TYPE_MODIFIED = 701;
+
+    public const TYPE_DELETED = 702;
+
+    public const TYPE_LOGIN_SUCCESS = 800;
+
+    public const TYPE_LOGIN_FAILURE = 801;
+
+    public const TYPE_GENERIC = 900;
 
     protected $fillable = [
         'client_id',
@@ -144,7 +197,9 @@ class SystemLog extends Model
         }
 
         return $this
-            ->where('id', $this->decodePrimaryKey($value))->firstOrFail();
+            ->where('id', $this->decodePrimaryKey($value))
+            ->company()
+            ->firstOrFail();
     }
 
     /*
@@ -152,9 +207,17 @@ class SystemLog extends Model
      */
     public function scopeCompany($query)
     {
-        $query->where('company_id', auth()->user()->companyId());
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $query->where('company_id', $user->companyId());
 
         return $query;
+    }
+
+    public function company()
+    {
+        return $this->hasMany(\App\Models\Company::class);
     }
 
     public function getCategoryName()

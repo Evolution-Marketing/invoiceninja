@@ -11,15 +11,14 @@
 
 namespace Tests\Unit;
 
-use App\DataMapper\ClientSettings;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class CentConversionTest extends TestCase
 {
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
     }

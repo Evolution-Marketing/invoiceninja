@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,7 +12,6 @@
 namespace App\Jobs\Payment;
 
 use App\Events\Payment\PaymentWasEmailed;
-use App\Events\Payment\PaymentWasEmailedAndFailed;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
 use App\Libraries\MultiDB;
@@ -28,19 +27,15 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Mail;
 
 class EmailRefundPayment implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public $payment;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $email_builder;
-
-    private $contact;
-
-    private $company;
 
     public $settings;
 
@@ -52,19 +47,14 @@ class EmailRefundPayment implements ShouldQueue
      * @param $contact
      * @param $company
      */
-    public function __construct(Payment $payment, Company $company, ClientContact $contact)
+    public function __construct(public Payment $payment, private Company $company, private ?ClientContact $contact)
     {
-        $this->payment = $payment;
-        $this->contact = $contact;
-        $this->company = $company;
         $this->settings = $payment->client->getMergedSettings();
     }
 
     /**
      * Execute the job.
      *
-     *
-     * @return void
      */
     public function handle()
     {
@@ -86,24 +76,36 @@ class EmailRefundPayment implements ShouldQueue
             $template_data['body'] = ctrans('texts.refunded_payment').' $payment.refunded <br><br>$invoices';
             $template_data['subject'] = ctrans('texts.refunded_payment');
 
-            $email_builder = (new PaymentEmailEngine($this->payment, $this->contact, $template_data))->build();
+            $email_builder = new PaymentEmailEngine($this->payment, $this->contact, $template_data);
+            $email_builder->is_refund = true;
+            $email_builder->build();
 
             $invitation = null;
 
+            $nmo = new NinjaMailerObject();
+
             if ($this->payment->invoices && $this->payment->invoices->count() >= 1) {
-                $invitation = $this->payment->invoices->first()->invitations()->first();
+
+                if ($this->contact) {
+                    $invitation = $this->payment->invoices->first()->invitations()->where('client_contact_id', $this->contact->id)->first();
+                } else {
+                    $invitation = $this->payment->invoices->first()->invitations()->first();
+                }
+
+                if ($invitation) {
+                    $nmo->invitation = $invitation;
+                }
             }
 
-            $nmo = new NinjaMailerObject;
             $nmo->mailable = new TemplateEmail($email_builder, $this->contact, $invitation);
             $nmo->to_user = $this->contact;
             $nmo->settings = $this->settings;
             $nmo->company = $this->company;
             $nmo->entity = $this->payment;
 
-            NinjaMailerJob::dispatch($nmo);
+            (new NinjaMailerJob($nmo))->handle();
 
-            event(new PaymentWasEmailed($this->payment, $this->payment->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
+            event(new PaymentWasEmailed($this->payment, $this->payment->company, $this->contact, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
         }
     }
 }

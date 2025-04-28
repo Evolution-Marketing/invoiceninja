@@ -20,7 +20,8 @@ use Tests\TestCase;
 
 class ExampleIntegrationTest extends TestCase
 {
-    use MakesInvoiceValues, MockAccountData;
+    use MakesInvoiceValues;
+    use MockAccountData;
 
     protected function setUp(): void
     {
@@ -31,7 +32,7 @@ class ExampleIntegrationTest extends TestCase
 
     public function testExample()
     {
-        $this->markTestIncomplete();
+        // $this->markTestIncomplete();
 
         $invoice = $this->invoice;
         $invitation = $invoice->invitations()->first();
@@ -49,6 +50,10 @@ class ExampleIntegrationTest extends TestCase
                 'pdf_variables' => (array) $invoice->company->settings->pdf_variables,
             ]),
             'variables' => $engine->generateLabelsAndValues(),
+             'options' => [
+                'client' => $invoice->client,
+                'invoices' => [$invoice]
+            ],
         ];
 
         $maker = new PdfMaker($state);
@@ -57,10 +62,6 @@ class ExampleIntegrationTest extends TestCase
             ->design($design)
             ->build();
 
-        //      exec('echo "" > storage/logs/laravel.log');
-
-//        nlog($maker->getCompiledHTML(true));
-
-        $this->assertTrue(true);
+        $this->assertNotNull($maker->getCompiledHTML(true));
     }
 }

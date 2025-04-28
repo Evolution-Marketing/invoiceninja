@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -23,25 +23,29 @@ class OAuth
     /**
      * Socialite Providers.
      */
-    const SOCIAL_GOOGLE = 1;
+    public const SOCIAL_GOOGLE = 1;
 
-    const SOCIAL_FACEBOOK = 2;
+    public const SOCIAL_FACEBOOK = 2;
 
-    const SOCIAL_GITHUB = 3;
+    public const SOCIAL_GITHUB = 3;
 
-    const SOCIAL_LINKEDIN = 4;
+    public const SOCIAL_LINKEDIN = 4;
 
-    const SOCIAL_TWITTER = 5;
+    public const SOCIAL_TWITTER = 5;
 
-    const SOCIAL_BITBUCKET = 6;
+    public const SOCIAL_BITBUCKET = 6;
 
-    const SOCIAL_MICROSOFT = 7;
+    public const SOCIAL_MICROSOFT = 7;
 
-    const SOCIAL_APPLE = 8;
+    public const SOCIAL_APPLE = 8;
+
+    public $provider_instance;
+
+    public $provider_id;
 
     /**
-     * @param Socialite $user
-     * @return bool|\App\Models\User|\App\Libraries\App\Models\User|null
+     * @param \Laravel\Socialite\Facades\Socialite $socialite_user
+     * @return bool | \App\Models\User | \App\Models\User | null
      */
     public static function handleAuth($socialite_user, $provider)
     {
@@ -71,22 +75,24 @@ class OAuth
     public static function providerToString(int $social_provider): string
     {
         switch ($social_provider) {
-            case SOCIAL_GOOGLE:
+            case self::SOCIAL_GOOGLE:
                 return 'google';
-            case SOCIAL_FACEBOOK:
+            case self::SOCIAL_FACEBOOK:
                 return 'facebook';
-            case SOCIAL_GITHUB:
+            case self::SOCIAL_GITHUB:
                 return 'github';
-            case SOCIAL_LINKEDIN:
+            case self::SOCIAL_LINKEDIN:
                 return 'linkedin';
-            case SOCIAL_TWITTER:
+            case self::SOCIAL_TWITTER:
                 return 'twitter';
-            case SOCIAL_BITBUCKET:
+            case self::SOCIAL_BITBUCKET:
                 return 'bitbucket';
-            case SOCIAL_MICROSOFT:
+            case self::SOCIAL_MICROSOFT:
                 return 'microsoft';
-            case SOCIAL_APPLE:
+            case self::SOCIAL_APPLE:
                 return 'apple';
+            default:
+                return 'google';
         }
     }
 
@@ -94,21 +100,23 @@ class OAuth
     {
         switch ($social_provider) {
             case 'google':
-                return SOCIAL_GOOGLE;
+                return self::SOCIAL_GOOGLE;
             case 'facebook':
-                return SOCIAL_FACEBOOK;
+                return self::SOCIAL_FACEBOOK;
             case 'github':
-                return SOCIAL_GITHUB;
+                return self::SOCIAL_GITHUB;
             case 'linkedin':
-                return SOCIAL_LINKEDIN;
+                return self::SOCIAL_LINKEDIN;
             case 'twitter':
-                return SOCIAL_TWITTER;
+                return self::SOCIAL_TWITTER;
             case 'bitbucket':
-                return SOCIAL_BITBUCKET;
+                return self::SOCIAL_BITBUCKET;
             case 'microsoft':
-                return SOCIAL_MICROSOFT;
+                return self::SOCIAL_MICROSOFT;
             case 'apple':
-                return SOCIAL_APPLE;
+                return self::SOCIAL_APPLE;
+            default:
+                return self::SOCIAL_GOOGLE;
         }
     }
 
@@ -122,7 +130,6 @@ class OAuth
                 return $this;
             default:
                 return null;
-                break;
         }
     }
 

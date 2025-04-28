@@ -4,27 +4,22 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Services\PurchaseOrder;
 
-use App\Jobs\Vendor\CreatePurchaseOrderPdf;
+use App\Jobs\Entity\CreateRawPdf;
 use App\Models\PurchaseOrder;
 use App\Models\VendorContact;
 use App\Services\AbstractService;
-use App\Utils\TempFile;
-use Illuminate\Support\Facades\Storage;
 
 class GetPurchaseOrderPdf extends AbstractService
 {
-    public function __construct(PurchaseOrder $purchase_order, VendorContact $contact = null)
+    public function __construct(public PurchaseOrder $purchase_order, public ?VendorContact $contact = null)
     {
-        $this->purchase_order = $purchase_order;
-
-        $this->contact = $contact;
     }
 
     public function run()
@@ -39,19 +34,7 @@ class GetPurchaseOrderPdf extends AbstractService
             $invitation = $this->purchase_order->invitations()->first();
         }
 
-        $path = $this->purchase_order->vendor->purchase_order_filepath($invitation);
+        return (new CreateRawPdf($invitation))->handle();
 
-        $file_path = $path.$this->purchase_order->numberFormatter().'.pdf';
-
-        // $disk = 'public';
-        $disk = config('filesystems.default');
-
-        $file = Storage::disk($disk)->exists($file_path);
-
-        if (! $file) {
-            $file_path = (new CreatePurchaseOrderPdf($invitation))->handle();
-        }
-
-        return $file_path;
     }
 }

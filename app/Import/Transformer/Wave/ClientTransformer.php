@@ -2,9 +2,9 @@
 /**
  * Invoice Ninja (https://clientninja.com).
  *
- * @link https://github.com/clientninja/clientninja source repository
+ * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. client Ninja LLC (https://clientninja.com)
+ * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -28,10 +28,11 @@ class ClientTransformer extends BaseTransformer
     public function transform($data)
     {
         if (isset($data['customer_name']) && $this->hasClient($data['customer_name'])) {
-            throw new ImportException('Client already exists');
+            return false;
+            // throw new ImportException('Client already exists');
         }
 
-        $settings = new \stdClass;
+        $settings = new \stdClass();
         $settings->currency_id = (string) $this->getCurrencyByCode($data, 'customer_currency');
 
         if (strval($data['Payment Terms'] ?? '') > 0) {
@@ -42,7 +43,7 @@ class ClientTransformer extends BaseTransformer
             'company_id'     => $this->company->id,
             'name'           => $this->getString($data, 'customer_name'),
             'number'         => $this->getValueOrNull($data, 'account_number'),
-            'work_phone'     => $this->getString($data, 'phone'),
+            'phone'     => $this->getString($data, 'phone'),
             'website'     	 => $this->getString($data, 'website'),
             'country_id'     => ! empty($data['country']) ? $this->getCountryId($data['country']) : null,
             'state'          => $this->getString($data, 'province/state'),
@@ -60,7 +61,7 @@ class ClientTransformer extends BaseTransformer
             'public_notes'    		  => $this->getString($data, 'delivery_instructions'),
 
             'credit_balance' => 0,
-            'settings'       =>$settings,
+            'settings'       => $settings,
             'client_hash'    => Str::random(40),
             'contacts'       => [
                 [

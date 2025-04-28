@@ -4,16 +4,24 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Providers;
 
+use App\Utils\Ninja;
+use App\Models\Scheduler;
+use Illuminate\Http\Request;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
+use App\Http\Middleware\ThrottleRequestsWithPredis;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Database\Eloquent\ModelNotFoundException as ModelNotFoundException;
+use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 
 class RouteServiceProvider extends ServiceProvider
 {
@@ -27,6 +35,64 @@ class RouteServiceProvider extends ServiceProvider
     public function boot()
     {
         parent::boot();
+
+        if (Ninja::isHosted() && !config('ninja.testvars.travis')) {
+            app('router')->aliasMiddleware('throttle', ThrottleRequestsWithPredis::class);
+        } else {
+            app('router')->aliasMiddleware('throttle', ThrottleRequests::class);
+        }
+
+        Route::bind('task_scheduler', function ($value) {
+            if (is_numeric($value)) {
+                throw new ModelNotFoundException("Record with value {$value} not found");
+            }
+
+            return Scheduler::query()
+                ->withTrashed()
+                ->company()
+                ->where('id', $this->decodePrimaryKey($value))->firstOrFail();
+        });
+
+        RateLimiter::for('login', function (Request $request) {
+            if (Ninja::isSelfHost()) {
+                return Limit::none();
+            } else {
+                return Limit::perMinute(30)->by($request->ip());
+            }
+        });
+
+        RateLimiter::for('api', function (Request $request) {
+            if (Ninja::isSelfHost()) {
+                return Limit::none();
+            } else {
+                return Limit::perMinute(1000)->by($request->ip());
+            }
+        });
+
+        RateLimiter::for('refresh', function (Request $request) {
+            if (Ninja::isSelfHost()) {
+                return Limit::none();
+            } else {
+                return Limit::perMinute(200)->by($request->ip());
+            }
+        });
+
+        RateLimiter::for('404', function (Request $request) {
+            if (Ninja::isSelfHost()) {
+                return Limit::none();
+            } else {
+                return Limit::perMinute(10)->by($request->ip());
+            }
+        });
+
+        RateLimiter::for('honeypot', function (Request $request) {
+            return Limit::perMinute(2)->by($request->ip());
+        });
+
+        RateLimiter::for('portal', function (Request $request) {
+            return Limit::perMinute(15)->by($request->ip());
+        });
+
     }
 
     /**

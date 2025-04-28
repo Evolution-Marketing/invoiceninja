@@ -22,8 +22,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Http\Controllers\TokenController
+ * 
+ *  App\Http\Controllers\TokenController
  */
 class CompanyTokenApiTest extends TestCase
 {
@@ -31,7 +31,7 @@ class CompanyTokenApiTest extends TestCase
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -46,6 +46,19 @@ class CompanyTokenApiTest extends TestCase
         $this->withoutMiddleware(
             ThrottleRequests::class,
         );
+    }
+
+    public function testCompanyTokenListFilter()
+    {
+        $this->withoutMiddleware(PasswordProtection::class);
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+            'X-API-PASSWORD' => 'ALongAndBriliantPassword',
+        ])->get('/api/v1/tokens?filter=xx');
+
+        $response->assertStatus(200);
     }
 
     public function testCompanyTokenList()

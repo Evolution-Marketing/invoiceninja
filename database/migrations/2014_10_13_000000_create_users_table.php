@@ -22,8 +22,8 @@ return new class extends Migration {
      */
     public function up()
     {
-        DB::raw('SET GLOBAL innodb_file_per_table=1;');
-        DB::raw('SET GLOBAL innodb_file_format=Barracuda;');
+        DB::raw('SET GLOBAL innodb_file_per_table=1;')->getValue(DB::connection()->getQueryGrammar());
+        DB::raw('SET GLOBAL innodb_file_format=Barracuda;')->getValue(DB::connection()->getQueryGrammar());
 
         Schema::create('languages', function ($table) {
             $table->increments('id');
@@ -476,10 +476,10 @@ return new class extends Migration {
             $t->string('custom_value4')->nullable();
             $t->datetime('next_send_date')->nullable();
 
-            $t->string('custom_surcharge1')->nullable();
-            $t->string('custom_surcharge2')->nullable();
-            $t->string('custom_surcharge3')->nullable();
-            $t->string('custom_surcharge4')->nullable();
+            $t->decimal('custom_surcharge1', 20, 6)->nullable();
+            $t->decimal('custom_surcharge2', 20, 6)->nullable();
+            $t->decimal('custom_surcharge3', 20, 6)->nullable();
+            $t->decimal('custom_surcharge4', 20, 6)->nullable();
             $t->boolean('custom_surcharge_tax1')->default(false);
             $t->boolean('custom_surcharge_tax2')->default(false);
             $t->boolean('custom_surcharge_tax3')->default(false);
@@ -554,10 +554,10 @@ return new class extends Migration {
             $t->string('custom_value4')->nullable();
             $t->datetime('next_send_date')->nullable();
 
-            $t->string('custom_surcharge1')->nullable();
-            $t->string('custom_surcharge2')->nullable();
-            $t->string('custom_surcharge3')->nullable();
-            $t->string('custom_surcharge4')->nullable();
+            $t->decimal('custom_surcharge1', 20, 6)->nullable();
+            $t->decimal('custom_surcharge2', 20, 6)->nullable();
+            $t->decimal('custom_surcharge3', 20, 6)->nullable();
+            $t->decimal('custom_surcharge4', 20, 6)->nullable();
             $t->boolean('custom_surcharge_tax1')->default(false);
             $t->boolean('custom_surcharge_tax2')->default(false);
             $t->boolean('custom_surcharge_tax3')->default(false);
@@ -791,10 +791,10 @@ return new class extends Migration {
             $t->string('custom_value3')->nullable();
             $t->string('custom_value4')->nullable();
 
-            $t->string('custom_surcharge1')->nullable();
-            $t->string('custom_surcharge2')->nullable();
-            $t->string('custom_surcharge3')->nullable();
-            $t->string('custom_surcharge4')->nullable();
+            $t->decimal('custom_surcharge1', 20, 6)->nullable();
+            $t->decimal('custom_surcharge2', 20, 6)->nullable();
+            $t->decimal('custom_surcharge3', 20, 6)->nullable();
+            $t->decimal('custom_surcharge4', 20, 6)->nullable();
             $t->boolean('custom_surcharge_tax1')->default(false);
             $t->boolean('custom_surcharge_tax2')->default(false);
             $t->boolean('custom_surcharge_tax3')->default(false);

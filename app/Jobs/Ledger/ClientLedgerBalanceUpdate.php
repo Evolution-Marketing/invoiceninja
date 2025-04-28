@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,24 +19,24 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 
 class ClientLedgerBalanceUpdate implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $tries = 1;
 
-    public $company;
-
-    public $client;
-
     public $deleteWhenMissingModels = true;
 
-    public function __construct(Company $company, Client $client)
+    private ?CompanyLedger $next_balance_record;
+
+    public function __construct(public Company $company, public Client $client)
     {
-        $this->company = $company;
-        $this->client = $client;
     }
 
     /**
@@ -45,36 +45,35 @@ class ClientLedgerBalanceUpdate implements ShouldQueue
      *
      * @return void
      */
-    public function handle() :void
+    public function handle(): void
     {
-        // nlog("Updating company ledger for client ". $this->client->id);
 
         MultiDB::setDb($this->company->db);
 
-        CompanyLedger::where('balance', 0)->where('client_id', $this->client->id)->cursor()->each(function ($company_ledger) {
-            if ($company_ledger->balance > 0) {
-                return;
-            }
+        CompanyLedger::query()
+                        ->whereNull('balance')
+                        ->where('client_id', $this->client->id)
+                        ->orderBy('id', 'ASC')
+                        ->get()
+                        ->each(function ($company_ledger) {
 
-            $last_record = CompanyLedger::where('client_id', $company_ledger->client_id)
-                            ->where('company_id', $company_ledger->company_id)
-                            ->where('balance', '!=', 0)
-                            ->orderBy('id', 'DESC')
-                            ->first();
+                            $parent_ledger = CompanyLedger::query()
+                                                    ->where('id', '<', $company_ledger->id)
+                                                    ->where('client_id', $company_ledger->client_id)
+                                                    ->where('company_id', $company_ledger->company_id)
+                                                    ->whereNotNull('balance')
+                                                    ->orderBy('id', 'DESC')
+                                                    ->first();
 
-            if (! $last_record) {
-                $last_record = CompanyLedger::where('client_id', $company_ledger->client_id)
-                ->where('company_id', $company_ledger->company_id)
-                ->orderBy('id', 'DESC')
-                ->first();
-            }
+                            $company_ledger->balance = ($parent_ledger ? $parent_ledger->balance : 0) + $company_ledger->adjustment;
+                            $company_ledger->save();
 
-            // nlog("Updating Balance NOW");
+                        });
 
-            $company_ledger->balance = $last_record->balance + $company_ledger->adjustment;
-            $company_ledger->save();
-        });
+    }
 
-        // nlog("Updating company ledger for client ". $this->client->id);
+    public function middleware()
+    {
+        return [(new WithoutOverlapping($this->client->client_hash))->dontRelease()];
     }
 }

@@ -4,28 +4,32 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Listeners\User;
 
-use App\Jobs\Mail\NinjaMailerJob;
-use App\Jobs\Mail\NinjaMailerObject;
-use App\Jobs\Util\SystemLogger;
-use App\Libraries\MultiDB;
-use App\Mail\User\UserLoggedIn;
-use App\Models\Client;
+use App\Utils\Ninja;
 use App\Models\SystemLog;
-use Illuminate\Broadcasting\InteractsWithSockets;
+use App\Libraries\MultiDB;
+use App\Jobs\Util\SystemLogger;
+use App\Mail\User\UserLoggedIn;
+use App\Jobs\Mail\NinjaMailerJob;
+use Illuminate\Support\Facades\App;
+use App\Jobs\Mail\NinjaMailerObject;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Broadcasting\InteractsWithSockets;
 
 class UpdateUserLastLogin implements ShouldQueue
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable;
+    use InteractsWithSockets;
+    use SerializesModels;
 
     /**
      * Create the event listener.
@@ -46,26 +50,39 @@ class UpdateUserLastLogin implements ShouldQueue
     {
         MultiDB::setDb($event->company->db);
 
+        App::forgetInstance('translator');
+        $t = app('translator');
+        $t->replace(Ninja::transformTranslations($event->company->settings));
+        App::setLocale($event->company->locale());
+
         $user = $event->user;
         $user->last_login = now();
         $user->save();
 
         $event_vars = $event->event_vars;
         $ip = array_key_exists('ip', $event->event_vars) ? $event->event_vars['ip'] : 'IP address not resolved';
+        $key = "user_logged_in_{$user->id}{$event->company->db}";
 
-        if ($user->ip != $ip) {
-            $nmo = new NinjaMailerObject;
+        if ($user->ip != $ip && is_null(Cache::get($key)) && $user->user_logged_in_notification) {
+            $nmo = new NinjaMailerObject();
             $nmo->mailable = new UserLoggedIn($user, $user->account->companies->first(), $ip);
             $nmo->company = $user->account->companies->first();
             $nmo->settings = $user->account->companies->first()->settings;
             $nmo->to_user = $user;
-            NinjaMailerJob::dispatch($nmo, true);
+
+            try{
+                NinjaMailerJob::dispatch($nmo, true);
+            } catch (\Exception $e) {
+                //this will catch for users that don't have their mail server configured correctly.
+            }
 
             $user->ip = $ip;
             $user->save();
         }
 
+        Cache::put($key, true, 60 * 24);
         $arr = json_encode(['ip' => $ip]);
+        $arr = ctrans('texts.new_login_detected'). " {$ip}";
 
         SystemLogger::dispatch(
             $arr,

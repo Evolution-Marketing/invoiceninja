@@ -4,20 +4,21 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Requests\Company;
 
-use App\DataMapper\CompanySettings;
 use App\Http\Requests\Request;
 use App\Http\ValidationRules\Company\ValidCompanyQuantity;
+use App\Http\ValidationRules\Company\ValidExpenseMailbox;
 use App\Http\ValidationRules\Company\ValidSubdomain;
 use App\Http\ValidationRules\ValidSettingsRule;
 use App\Models\Company;
 use App\Utils\Ninja;
+use App\Libraries\MultiDB;
 use App\Utils\Traits\MakesHash;
 
 class StoreCompanyRequest extends Request
@@ -29,9 +30,11 @@ class StoreCompanyRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', Company::class);
+        /** @var \App\Models\User auth()->user */
+        $user = auth()->user();
+        return $user->can('create', Company::class);
     }
 
     public function rules()
@@ -48,11 +51,22 @@ class StoreCompanyRequest extends Request
             $rules['portal_domain'] = 'sometimes|url';
         } else {
             if (Ninja::isHosted()) {
-                $rules['subdomain'] = ['nullable', 'regex:/^[a-zA-Z0-9][a-zA-Z0-9.-]+[a-zA-Z0-9]$/', new ValidSubdomain($this->all())];
+                $rules['subdomain'] = ['nullable', 'regex:/^[a-zA-Z0-9-]{1,63}$/', new ValidSubdomain()];
             } else {
                 $rules['subdomain'] = 'nullable|alpha_num';
             }
         }
+
+        $rules['expense_mailbox'] = new ValidExpenseMailbox();
+
+        $rules['smtp_host'] = 'sometimes|string|nullable';
+        $rules['smtp_port'] = 'sometimes|integer|nullable';
+        $rules['smtp_encryption'] = 'sometimes|string';
+        $rules['smtp_local_domain'] = 'sometimes|string|nullable';
+        $rules['smtp_encryption'] = 'sometimes|string|nullable';
+        $rules['smtp_local_domain'] = 'sometimes|string|nullable';
+
+        // $rules['smtp_verify_peer'] = 'sometimes|in:true,false';
 
         return $rules;
     }
@@ -61,22 +75,40 @@ class StoreCompanyRequest extends Request
     {
         $input = $this->all();
 
-        if (array_key_exists('google_analytics_url', $input)) {
+        if (!isset($input['name'])) {
+            $input['name'] = 'Untitled Company';
+        }
+
+        if (isset($input['google_analytics_url'])) {
             $input['google_analytics_key'] = $input['google_analytics_url'];
         }
 
-        // $company_settings = CompanySettings::defaults();
+        if (isset($input['portal_domain'])) {
+            $input['portal_domain'] = rtrim(strtolower($input['portal_domain']), "/");
+        }
 
-        //@todo this code doesn't make sense as we never return $company_settings anywhere
-        //@deprecated???
-        // if (array_key_exists('settings', $input) && ! empty($input['settings'])) {
-        //     foreach ($input['settings'] as $key => $value) {
-        //         $company_settings->{$key} = $value;
-        //     }
-        // }
+        if (isset($input['expense_mailbox']) && Ninja::isHosted() && !($this->company->account->isPaid() && $this->company->account->plan == 'enterprise')) {
+            unset($input['expense_mailbox']);
+        }
 
-        if (array_key_exists('portal_domain', $input)) {
-            $input['portal_domain'] = strtolower($input['portal_domain']);
+        if (Ninja::isHosted() && !isset($input['subdomain'])) {
+            $input['subdomain'] = MultiDB::randomSubdomainGenerator();
+        }
+
+        if (isset($input['smtp_username']) && strlen(str_replace("*", "", $input['smtp_username'])) < 2) {
+            unset($input['smtp_username']);
+        }
+
+        if (isset($input['smtp_password']) && strlen(str_replace("*", "", $input['smtp_password'])) < 2) {
+            unset($input['smtp_password']);
+        }
+
+        if (isset($input['smtp_port'])) {
+            $input['smtp_port'] = (int) $input['smtp_port'];
+        }
+
+        if (isset($input['smtp_verify_peer']) && is_string($input['smtp_verify_peer'])) {
+            $input['smtp_verify_peer'] == 'true' ? true : false;
         }
 
         $this->replace($input);

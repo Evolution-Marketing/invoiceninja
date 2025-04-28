@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,9 +13,7 @@
 namespace App\Filters;
 
 use App\Models\Credit;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Carbon;
 
 class CreditFilters extends QueryFilters
 {
@@ -29,10 +27,10 @@ class CreditFilters extends QueryFilters
      * - overdue
      * - reversed
      *
-     * @param string credit_status The credit status as seen by the client
+     * @param string $value The credit status as seen by the client
      * @return Builder
      */
-    public function credit_status(string $value = '') :Builder
+    public function client_status(string $value = ''): Builder
     {
         if (strlen($value) == 0) {
             return $this->builder;
@@ -44,20 +42,27 @@ class CreditFilters extends QueryFilters
             return $this->builder;
         }
 
+        $credit_filters = [];
+
         if (in_array('draft', $status_parameters)) {
-            $this->builder->where('status_id', Credit::STATUS_DRAFT);
+            $credit_filters[] = Credit::STATUS_DRAFT;
+        }
+
+        if (in_array('sent', $status_parameters)) {
+            $credit_filters[] = Credit::STATUS_SENT;
         }
 
         if (in_array('partial', $status_parameters)) {
-            $this->builder->where('status_id', Credit::STATUS_PARTIAL);
+            $credit_filters[] = Credit::STATUS_PARTIAL;
         }
 
         if (in_array('applied', $status_parameters)) {
-            $this->builder->where('status_id', Credit::STATUS_APPLIED);
+            $credit_filters[] = Credit::STATUS_APPLIED;
         }
 
-        //->where('due_date', '>', Carbon::now())
-        //->orWhere('partial_due_date', '>', Carbon::now());
+        if (count($credit_filters) >= 1) {
+            $this->builder->whereIn('status_id', $credit_filters);
+        }
 
         return $this->builder;
     }
@@ -65,11 +70,11 @@ class CreditFilters extends QueryFilters
     /**
      * Filter based on search text.
      *
-     * @param string query filter
+     * @param string $filter
      * @return Builder
      * @deprecated
      */
-    public function filter(string $filter = '') : Builder
+    public function filter(string $filter = ''): Builder
     {
         if (strlen($filter) == 0) {
             return $this->builder;
@@ -84,73 +89,77 @@ class CreditFilters extends QueryFilters
                           ->orWhere('credits.custom_value1', 'like', '%'.$filter.'%')
                           ->orWhere('credits.custom_value2', 'like', '%'.$filter.'%')
                           ->orWhere('credits.custom_value3', 'like', '%'.$filter.'%')
-                          ->orWhere('credits.custom_value4', 'like', '%'.$filter.'%');
+                          ->orWhere('credits.custom_value4', 'like', '%'.$filter.'%')
+                          ->orWhereHas('client', function ($q) use ($filter) {
+                              $q->where('name', 'like', '%'.$filter.'%');
+                          })
+                          ->orWhereHas('client.contacts', function ($q) use ($filter) {
+                              $q->where('first_name', 'like', '%'.$filter.'%')
+                                ->orWhere('last_name', 'like', '%'.$filter.'%')
+                                ->orWhere('email', 'like', '%'.$filter.'%');
+                          })
+                                                    ->orWhereRaw("
+                            JSON_UNQUOTE(JSON_EXTRACT(
+                                JSON_ARRAY(
+                                    JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[*].notes')), 
+                                    JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[*].product_key'))
+                                ), '$[*]')
+                            ) LIKE ?", ['%'.$filter.'%']);
+            //   ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[*].notes')) LIKE ?", ['%'.$filter.'%']);
         });
     }
 
-    /**
-     * Filters the list based on the status
-     * archived, active, deleted - legacy from V1.
-     *
-     * @param string filter
-     * @return Builder
-     */
-    public function status(string $filter = '') : Builder
+    public function applicable(string $value = ''): Builder
     {
-        if (strlen($filter) == 0) {
+        if (strlen($value) == 0) {
             return $this->builder;
         }
 
-        $table = 'credits';
-        $filters = explode(',', $filter);
-
-        return $this->builder->where(function ($query) use ($filters, $table) {
-            $query->whereNull($table.'.id');
-
-            if (in_array(parent::STATUS_ACTIVE, $filters)) {
-                $query->orWhereNull($table.'.deleted_at');
-            }
-
-            if (in_array(parent::STATUS_ARCHIVED, $filters)) {
-                $query->orWhere(function ($query) use ($table) {
-                    $query->whereNotNull($table.'.deleted_at');
-
-                    if (! in_array($table, ['users'])) {
-                        $query->where($table.'.is_deleted', '=', 0);
-                    }
-                });
-            }
-
-            if (in_array(parent::STATUS_DELETED, $filters)) {
-                $query->orWhere($table.'.is_deleted', '=', 1);
-            }
+        return $this->builder->where(function ($query) {
+            $query->whereIn('status_id', [Credit::STATUS_SENT, Credit::STATUS_PARTIAL])
+                  ->where('balance', '>', 0)
+                  ->where(function ($q) {
+                      $q->whereNull('due_date')->orWhere('due_date', '>', now());
+                  });
         });
+    }
+
+    public function number(string $number = ''): Builder
+    {
+        if (strlen($number) == 0) {
+            return $this->builder;
+        }
+
+        return $this->builder->where('number', $number);
     }
 
     /**
      * Sorts the list based on $sort.
      *
-     * @param string sort formatted as column|asc
+     * @param string $sort formatted as column|asc
      * @return Builder
      */
-    public function sort(string $sort) : Builder
+    public function sort(string $sort = ''): Builder
     {
         $sort_col = explode('|', $sort);
 
-        return $this->builder->orderBy($sort_col[0], $sort_col[1]);
-    }
+        if (!is_array($sort_col) || count($sort_col) != 2 || !in_array($sort_col[0], \Illuminate\Support\Facades\Schema::getColumnListing($this->builder->getModel()->getTable()))) {
+            return $this->builder;
+        }
 
-    /**
-     * Returns the base query.
-     *
-     * @param int company_id
-     * @param User $user
-     * @return Builder
-     * @deprecated
-     */
-    public function baseQuery(int $company_id, User $user) : Builder
-    {
-        // ..
+        $dir = ($sort_col[1] == 'asc') ? 'asc' : 'desc';
+
+        if ($sort_col[0] == 'client_id') {
+            return $this->builder->orderBy(\App\Models\Client::select('name')
+                    ->whereColumn('clients.id', 'credits.client_id'), $dir);
+        }
+
+
+        if ($sort_col[0] == 'number') {
+            return $this->builder->orderByRaw("REGEXP_REPLACE(number,'[^0-9]+','')+0 " . $dir);
+        }
+
+        return $this->builder->orderBy($sort_col[0], $dir);
     }
 
     /**
@@ -159,7 +168,7 @@ class CreditFilters extends QueryFilters
      * We need to ensure we are using the correct company ID
      * as we could be hitting this from either the client or company auth guard
      *
-     * @return Illuminate\Database\Query\Builder
+     * @return Builder
      */
     public function entityFilter()
     {
@@ -169,7 +178,7 @@ class CreditFilters extends QueryFilters
             return $this->builder->company();
         }
 
-//            return $this->builder->whereCompanyId(auth()->user()->company()->id);
+        //            return $this->builder->whereCompanyId(auth()->user()->company()->id);
     }
 
     /**
@@ -178,7 +187,7 @@ class CreditFilters extends QueryFilters
      *
      * @return Builder
      */
-    private function contactViewFilter() : Builder
+    private function contactViewFilter(): Builder
     {
         return $this->builder
                     ->whereCompanyId(auth()->guard('contact')->user()->company->id)

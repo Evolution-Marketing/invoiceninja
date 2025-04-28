@@ -8,6 +8,8 @@
  * @license https://www.elastic.co/licensing/elastic-license 
  */
 
+import { wait, instant } from '../wait';
+
 class ProcessPRZELEWY24 {
     constructor(key, stripeConnect) {
         this.key = key;
@@ -17,19 +19,19 @@ class ProcessPRZELEWY24 {
 
     setupStripe = () => {
 
-        if (this.stripeConnect){
-           // this.stripe.stripeAccount = this.stripeConnect;
-           
-           this.stripe = Stripe(this.key, {
-              stripeAccount: this.stripeConnect,
-            }); 
-           
+        if (this.stripeConnect) {
+            // this.stripe.stripeAccount = this.stripeConnect;
+
+            this.stripe = Stripe(this.key, {
+                stripeAccount: this.stripeConnect,
+            });
+
         }
         else {
             this.stripe = Stripe(this.key);
         }
 
-        
+
         let elements = this.stripe.elements()
         var options = {
             // Custom styling can be passed to options when creating an Element
@@ -93,16 +95,37 @@ class ProcessPRZELEWY24 {
                     },
                     return_url: document.querySelector('meta[name="return-url"]').content,
                 }
-            );
+            ).then(function (result) {
+
+                if (result.error) {
+                    // Show error to your customer
+                    errors.textContent = result.error.message;
+                    errors.hidden = false;
+                    document.getElementById('pay-now').disabled = false;
+                    document.querySelector('#pay-now > svg').classList.add('hidden');
+                    document.querySelector('#pay-now > span').classList.remove('hidden');
+                } else {
+                    // The payment has been processed!
+                    if (result.paymentIntent.status === 'succeeded') {
+                        window.location = document.querySelector('meta[name="return-url"]').content;
+                    }
+                }
+            });
         });
     };
 }
 
-const publishableKey = document.querySelector(
-    'meta[name="stripe-publishable-key"]'
-)?.content ?? '';
+function boot() {
+    const publishableKey = document.querySelector(
+        'meta[name="stripe-publishable-key"]'
+    )?.content ?? '';
+    
+    const stripeConnect =
+        document.querySelector('meta[name="stripe-account-id"]')?.content ?? '';
+    
+    new ProcessPRZELEWY24(publishableKey, stripeConnect).setupStripe().handle();
+}
 
-const stripeConnect =
-    document.querySelector('meta[name="stripe-account-id"]')?.content ?? '';
+instant() ? boot() : wait('#stripe-przelewy24-payment').then(() => boot());
 
-new ProcessPRZELEWY24(publishableKey, stripeConnect).setupStripe().handle();
+instant() ? boot() : wait('#stripe-przelewy24-payment').then(() => boot());

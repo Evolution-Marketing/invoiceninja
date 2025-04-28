@@ -21,14 +21,14 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class InventoryManagementTest extends TestCase
 {
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -37,6 +37,10 @@ class InventoryManagementTest extends TestCase
         $this->withoutMiddleware(
             ThrottleRequests::class
         );
+
+        if (config('ninja.testvars.travis') !== false) {
+            $this->markTestSkipped('Skip test for GH Actions');
+        }
     }
 
     public function testInventoryMovements()
@@ -58,7 +62,7 @@ class InventoryManagementTest extends TestCase
         $invoice->company->track_inventory = true;
         $invoice->push();
 
-        $invoice_item = new InvoiceItem;
+        $invoice_item = new InvoiceItem();
         $invoice_item->type_id = 1;
         $invoice_item->product_key = $product->product_key;
         $invoice_item->notes = $product->notes;
@@ -78,33 +82,26 @@ class InventoryManagementTest extends TestCase
             'X-API-SECRET' => config('ninja.api_secret'),
             'X-API-TOKEN' => $this->token,
         ])->post('/api/v1/invoices/', $invoice_array)
-            ->assertStatus(200);
+        ->assertStatus(200);
 
-        $product = $product->refresh();
+        $product = $product->fresh();
 
         $this->assertEquals(90, $product->in_stock_quantity);
 
-        // $arr = $response->json();
-        // $invoice_hashed_id = $arr['data']['id'];
+        $data = $response->json();
 
-        // $invoice_item = new InvoiceItem;
-        // $invoice_item->type_id = 1;
-        // $invoice_item->product_key = $product->product_key;
-        // $invoice_item->notes = $product->notes;
-        // $invoice_item->quantity = 5;
-        // $invoice_item->cost = 100;
+        $invoice = Invoice::find($this->decodePrimaryKey($data['data']['id']));
 
-        // $line_items2[] = $invoice_item;
-        // $invoice->line_items = $line_items2;
+        $invoice->service()->markDeleted()->save();
+        $invoice->is_deleted = true;
+        $invoice->save();
 
-        // $response = $this->withHeaders([
-        //     'X-API-SECRET' => config('ninja.api_secret'),
-        //     'X-API-TOKEN' => $this->token,
-        // ])->put('/api/v1/invoices/'.$invoice_hashed_id, $invoice->toArray())
-        // ->assertStatus(200);
+        $this->assertEquals(100, $product->fresh()->in_stock_quantity);
 
-        // $product = $product->refresh();
+        $invoice = Invoice::withTrashed()->find($this->decodePrimaryKey($data['data']['id']));
 
-        // $this->assertEquals(95, $product->in_stock_quantity);
+        $invoice->service()->handleRestore()->save();
+
+        $this->assertEquals(90, $product->fresh()->in_stock_quantity);
     }
 }

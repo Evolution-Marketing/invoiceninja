@@ -4,25 +4,20 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Mail;
 
-use App\Jobs\Mail\NinjaMailer;
-use App\Jobs\Mail\NinjaMailerJob;
-use App\Jobs\Mail\NinjaMailerObject;
 use App\Libraries\MultiDB;
 use App\Mail\Admin\ClientPaymentFailureObject;
-use App\Mail\Admin\EntityNotificationMailer;
 use App\Mail\Admin\PaymentFailureObject;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\PaymentHash;
-use App\Models\User;
 use App\Utils\Traits\MakesHash;
 use App\Utils\Traits\Notifications\UserNotifies;
 use Illuminate\Bus\Queueable;
@@ -37,7 +32,12 @@ use Illuminate\Support\Facades\Mail;
 
 class PaymentFailedMailer implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UserNotifies, MakesHash;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use UserNotifies;
+    use MakesHash;
 
     public ?PaymentHash $payment_hash;
 
@@ -70,8 +70,8 @@ class PaymentFailedMailer implements ShouldQueue
      */
     public function handle()
     {
-        if(!is_string($this->error)){
-            $this->error = "Payment failed, no reason given.";
+        if (!is_string($this->error) || strlen($this->error) <= 1) {
+            $this->error = "";
         }
 
         //Set DB
@@ -82,10 +82,13 @@ class PaymentFailedMailer implements ShouldQueue
 
         $amount = 0;
         $invoice = false;
+        $invitation = false;
 
         if ($this->payment_hash) {
-            $amount = array_sum(array_column($this->payment_hash->invoices(), 'amount')) + $this->payment_hash->fee_total;
-            $invoice = Invoice::whereIn('id', $this->transformKeys(array_column($this->payment_hash->invoices(), 'invoice_id')))->withTrashed()->first();
+
+            $amount = $this->payment_hash?->amount_with_fee() ?: 0;
+            $invoice = Invoice::query()->with('invitations')->whereIn('id', $this->transformKeys(array_column($this->payment_hash->invoices(), 'invoice_id')))->withTrashed()->first();
+            $invitation = $invoice->invitations->first();
         }
 
         //iterate through company_users
@@ -96,9 +99,11 @@ class PaymentFailedMailer implements ShouldQueue
             if (($key = array_search('mail', $methods)) !== false) {
                 unset($methods[$key]);
 
-                $mail_obj = (new PaymentFailureObject($this->client, $this->error, $this->company, $amount, $this->payment_hash))->build();
+                $invitation = $invoice->invitations->first();
 
-                $nmo = new NinjaMailerObject;
+                $mail_obj = (new PaymentFailureObject($this->client, $this->error, $this->company, $amount, $this->payment_hash, $company_user->portalType()))->build();
+
+                $nmo = new NinjaMailerObject();
                 $nmo->mailable = new NinjaMailer($mail_obj);
                 $nmo->company = $this->company;
                 $nmo->to_user = $company_user->user;
@@ -109,17 +114,21 @@ class PaymentFailedMailer implements ShouldQueue
         });
 
         //add client payment failures here.
-        //
+
         if ($this->client->contacts()->whereNotNull('email')->exists() && $this->payment_hash) {
             $contact = $this->client->contacts()->whereNotNull('email')->first();
 
             $mail_obj = (new ClientPaymentFailureObject($this->client, $this->error, $this->company, $this->payment_hash))->build();
 
-            $nmo = new NinjaMailerObject;
+            $nmo = new NinjaMailerObject();
             $nmo->mailable = new NinjaMailer($mail_obj);
             $nmo->company = $this->company;
             $nmo->to_user = $contact;
             $nmo->settings = $settings;
+            
+            if ($invitation) {
+                $nmo->invitation = $invitation->withoutRelations();
+            }
 
             NinjaMailerJob::dispatch($nmo);
         }

@@ -4,7 +4,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -30,7 +30,7 @@ class RecurringExpenseRepository extends BaseRepository
      *
      * @return     \App\Models\RecurringExpense|null  recurring_expense Object
      */
-    public function save(array $data, RecurringExpense $recurring_expense) : ?RecurringExpense
+    public function save(array $data, RecurringExpense $recurring_expense): ?RecurringExpense
     {
         $recurring_expense->fill($data);
         $recurring_expense->number = empty($recurring_expense->number) ? $this->getNextRecurringExpenseNumber($recurring_expense) : $recurring_expense->number;

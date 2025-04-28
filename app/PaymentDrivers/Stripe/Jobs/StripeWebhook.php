@@ -4,24 +4,16 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers\Stripe\Jobs;
 
-use App\Jobs\Mail\PaymentFailedMailer;
-use App\Jobs\Util\SystemLogger;
 use App\Libraries\MultiDB;
 use App\Models\Company;
 use App\Models\CompanyGateway;
-use App\Models\GatewayType;
-use App\Models\Invoice;
-use App\Models\Payment;
-use App\Models\PaymentHash;
-use App\Models\PaymentType;
-use App\Models\SystemLog;
 use App\PaymentDrivers\Stripe\Utilities;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +23,11 @@ use Illuminate\Queue\SerializesModels;
 
 class StripeWebhook implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, Utilities;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use Utilities;
 
     public $tries = 1;
 
@@ -49,6 +45,9 @@ class StripeWebhook implements ShouldQueue
         'charge.failed',
         'payment_intent.succeeded',
         'payment_intent.payment_failed',
+        'mandate.updated',
+        'checkout.session.completed',
+        'payment_method.automatically_updated'
     ];
 
     public function __construct(string $company_key, int $company_gateway_id)
@@ -63,6 +62,7 @@ class StripeWebhook implements ShouldQueue
 
         $company = Company::where('company_key', $this->company_key)->first();
 
+        /** @var \App\Models\CompanyGateway $company_gateway **/
         $company_gateway = CompanyGateway::find($this->company_gateway_id);
 
         $stripe = $company_gateway->driver()->init();

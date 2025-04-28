@@ -4,21 +4,17 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Console\Commands;
 
-use App\Libraries\MultiDB;
-use App\Models\Backup;
-use App\Models\Design;
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Storage;
-use stdClass;
 
 class TranslationsExport extends Command
 {
@@ -27,7 +23,7 @@ class TranslationsExport extends Command
      *
      * @var string
      */
-    protected $signature = 'ninja:translations';
+    protected $signature = 'ninja:translations {--type=} {--path=}';
 
     /**
      * The console command description.
@@ -36,8 +32,11 @@ class TranslationsExport extends Command
      */
     protected $description = 'Transform translations to json';
 
+    protected $log = '';
+
     private array $langs = [
         'ar',
+        'bg',
         'ca',
         'cs',
         'da',
@@ -47,13 +46,19 @@ class TranslationsExport extends Command
         'en_GB',
         'es',
         'es_ES',
+        'et',
         'fa',
         'fi',
         'fr',
         'fr_CA',
+        'fr_CH',
+        'he',
         'hr',
+        'hu',
         'it',
         'ja',
+        'km_KH',
+        'lo_LA',
         'lt',
         'lv_LV',
         'mk_MK',
@@ -65,10 +70,13 @@ class TranslationsExport extends Command
         'ro',
         'ru_RU',
         'sl',
+        'sk',
         'sq',
+        'sr',
         'sv',
         'th',
         'tr_TR',
+        'vi',
         'zh_TW',
     ];
 
@@ -89,14 +97,60 @@ class TranslationsExport extends Command
      */
     public function handle()
     {
-        Storage::makeDirectory(storage_path('lang'));
+        $type = $this->option('type') ?? 'export';
+
+        if ($type == 'import') {
+            $this->import();
+        }
+
+        if ($type == 'export') {
+            $this->export();
+        }
+    }
+
+    private function import()
+    {
+        //loop and
 
         foreach ($this->langs as $lang) {
-            Storage::makeDirectory(storage_path("lang/{$lang}"));
+            $import_file = "textsphp_{$lang}.php";
+            $dir = $this->option('path') ?? storage_path('lang_import/');
+            $path = $dir.$import_file;
+
+            if (file_exists($path)) {
+                $this->logMessage($path);
+
+                $trans = file_get_contents($path);
+
+                file_put_contents(lang_path("/{$lang}/texts.php"), $trans);
+            } else {
+                $this->logMessage("Could not open file");
+                $this->logMessage($path);
+            }
+        }
+    }
+
+
+    private function export()
+    {
+        Storage::disk('local')->makeDirectory('lang');
+
+        foreach ($this->langs as $lang) {
+            Storage::disk('local')->makeDirectory("lang/{$lang}");
 
             $translations = Lang::getLoader()->load($lang, 'texts');
+            foreach ($translations as $key => $value) {
+                $translations[$key] = html_entity_decode($value);
+            }
 
-            Storage::put(storage_path("lang/{$lang}/{$lang}.json"), json_encode(Arr::dot($translations), JSON_UNESCAPED_UNICODE));
+            Storage::disk('local')->put("lang/{$lang}/{$lang}.json", json_encode(Arr::dot($translations), JSON_UNESCAPED_UNICODE));
         }
+    }
+
+    private function logMessage($str)
+    {
+        $str = date('Y-m-d h:i:s').' '.$str;
+        $this->info($str);
+        $this->log .= $str."\n";
     }
 }

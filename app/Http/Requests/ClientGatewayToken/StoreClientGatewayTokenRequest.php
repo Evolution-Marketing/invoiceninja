@@ -4,22 +4,16 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Requests\ClientGatewayToken;
 
-use App\DataMapper\ClientSettings;
 use App\Http\Requests\Request;
-use App\Http\ValidationRules\Ninja\CanStoreClientsRule;
-use App\Http\ValidationRules\ValidClientGroupSettingsRule;
 use App\Models\Client;
-use App\Models\GroupSetting;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Validation\Rule;
 
 class StoreClientGatewayTokenRequest extends Request
 {
@@ -30,19 +24,24 @@ class StoreClientGatewayTokenRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
         return auth()->user()->isAdmin();
     }
 
     public function rules()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         //ensure client is present
         $rules = [
-            'client_id' => 'required|exists:clients,id,company_id,'.auth()->user()->company()->id,
-            'company_gateway_id' => 'required',
+            'client_id' => ['required', 'bail', \Illuminate\Validation\Rule::exists('clients', 'id')->where('company_id', $user->company()->id)->where('is_deleted', 0)],
+            'company_gateway_id' => ['required', 'bail', \Illuminate\Validation\Rule::exists('company_gateways', 'id')->where('company_id', $user->company()->id)->where('is_deleted', 0)],
             'gateway_type_id' => 'required|integer',
             'meta' => 'required',
+            'is_default' => 'sometimes|bail|boolean'
         ];
 
         return $this->globalRules($rules);

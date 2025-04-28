@@ -30,15 +30,6 @@
                             {{ ctrans('texts.purchase_order_number_placeholder', ['purchase_order' => $purchase_order->number])}}
                             - {{ \App\Models\PurchaseOrder::stringStatus($purchase_order->status_id) }}
                         </h3>
-
-                            @if($key)
-                            <div class="btn hidden md:block" data-clipboard-text="{{url("vendor/purchase_order/{$key}")}}" aria-label="Copied!">
-                                <div class="flex text-sm leading-6 font-medium text-gray-500">
-                                    <p class="pr-10">{{url("vendor/purchase_order/{$key}")}}</p>
-                                    <p><img class="h-5 w-5" src="{{ asset('assets/clippy.svg') }}" alt="Copy to clipboard"></p>
-                                </div>
-                            </div>
-                            @endif
                     </div>
                 </div>
             </div>
@@ -46,19 +37,28 @@
     @endif
 
     @include('portal.ninja2020.components.entity-documents', ['entity' => $purchase_order])
-    @include('portal.ninja2020.components.pdf-viewer', ['entity' => $purchase_order, 'invitation' => $invitation])
-    @include('portal.ninja2020.invoices.includes.terms', ['entities' => [$purchase_order], 'entity_type' => ctrans('texts.purchase_order')])
-    @include('portal.ninja2020.invoices.includes.signature')
+    @livewire('pdf-slot', ['class' => get_class($purchase_order), 'entity_id' => $purchase_order->id, 'invitation_id' => $invitation->id ?? false, 'db' => $purchase_order->company->db])
+
 @endsection
 
 @section('footer')
-    <script src="{{ asset('js/clients/purchase_orders/accept.js') }}"></script>
-    <script src="{{ asset('vendor/clipboard.min.js') }}"></script>
+    @include('portal.ninja2020.invoices.includes.terms', ['entities' => [$purchase_order], 'variables' => $variables, 'entity_type' => ctrans('texts.purchase_order')])
+    @include('portal.ninja2020.invoices.includes.signature')
+@endsection
+
+@push('head')
+    @vite('resources/js/clients/purchase_orders/accept.js')
 
     <script type="text/javascript">
 
-        var clipboard = new ClipboardJS('.btn');
+        document.addEventListener('DOMContentLoaded', () => {
+
+            @if($key)
+                window.history.pushState({}, "", "{{ url("vendor/purchase_order/{$key}") }}");
+            @endif
+
+        });
 
     </script>
-@endsection
+@endpush
 
