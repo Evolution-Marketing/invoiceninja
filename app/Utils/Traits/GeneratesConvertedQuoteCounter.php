@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -33,7 +34,6 @@ use Illuminate\Support\Str;
  */
 trait GeneratesConvertedQuoteCounter
 {
-
     private int $update_counter;
 
     private function harvestQuoteCounter($quote, $invoice, Client $client)
@@ -54,7 +54,7 @@ trait GeneratesConvertedQuoteCounter
         return $this->getNextEntityNumber($invoice, $client, intval($counter));
     }
 
-    private function getNextEntityNumber($invoice, Client $client, $counter='')
+    private function getNextEntityNumber($invoice, Client $client, $counter = '')
     {
         $settings = $client->getMergedSettings();
 
@@ -70,7 +70,7 @@ trait GeneratesConvertedQuoteCounter
 
         $number = $this->applyNumberPattern($invoice, $number, $pattern);
 
-        $check = Invoice::whereCompanyId($client->company_id)->whereNumber($number)->withTrashed()->exists();
+        $check = Invoice::query()->whereCompanyId($client->company_id)->whereNumber($number)->withTrashed()->exists();
 
         if ($check) {
             return false;
@@ -158,7 +158,7 @@ trait GeneratesConvertedQuoteCounter
      * @param Invoice|null $invoice
      * @return     string              The next invoice number.
      */
-    public function getNextInvoiceNumber(Client $client, ?Invoice $invoice, $is_recurring = false) :string
+    public function getNextInvoiceNumber(Client $client, ?Invoice $invoice, $is_recurring = false): string
     {
         $entity_number = $this->getNextEntityNumber(Invoice::class, $client, $is_recurring);
 
@@ -172,7 +172,7 @@ trait GeneratesConvertedQuoteCounter
      *
      * @return     string              The next credit number.
      */
-    public function getNextCreditNumber(Client $client, ?Credit $credit) :string
+    public function getNextCreditNumber(Client $client, ?Credit $credit): string
     {
         $entity_number = $this->getNextEntityNumber(Credit::class, $client);
 
@@ -214,7 +214,7 @@ trait GeneratesConvertedQuoteCounter
      *
      * @return     string              The next payment number.
      */
-    public function getNextPaymentNumber(Client $client, ?Payment $payment) :string
+    public function getNextPaymentNumber(Client $client, ?Payment $payment): string
     {
         $entity_number = $this->getNextEntityNumber(Payment::class, $client);
 
@@ -229,7 +229,7 @@ trait GeneratesConvertedQuoteCounter
      * @return     string              The next client number.
      * @throws \Exception
      */
-    public function getNextClientNumber(Client $client) :string
+    public function getNextClientNumber(Client $client): string
     {
         //Reset counters if enabled
         $this->resetCounters($client);
@@ -252,7 +252,7 @@ trait GeneratesConvertedQuoteCounter
      * @param Vendor $vendor    The vendor
      * @return     string                         The next vendor number.
      */
-    public function getNextVendorNumber(Vendor $vendor) :string
+    public function getNextVendorNumber(Vendor $vendor): string
     {
         $this->resetCompanyCounters($vendor->company);
 
@@ -273,7 +273,7 @@ trait GeneratesConvertedQuoteCounter
      * @param  Project $project
      * @return string  The project number
      */
-    public function getNextProjectNumber(Project $project) :string
+    public function getNextProjectNumber(Project $project): string
     {
         $entity_number = $this->getNextEntityNumber(Project::class, $project->client, false);
 
@@ -286,7 +286,7 @@ trait GeneratesConvertedQuoteCounter
      * @param   Task    $task    The task
      * @return  string           The next task number.
      */
-    public function getNextTaskNumber(Task $task) :string
+    public function getNextTaskNumber(Task $task): string
     {
         $this->resetCompanyCounters($task->company);
 
@@ -308,7 +308,7 @@ trait GeneratesConvertedQuoteCounter
      * @param   Expense    $expense    The expense
      * @return  string                 The next expense number.
      */
-    public function getNextExpenseNumber(Expense $expense) :string
+    public function getNextExpenseNumber(Expense $expense): string
     {
         $this->resetCompanyCounters($expense->company);
 
@@ -330,7 +330,7 @@ trait GeneratesConvertedQuoteCounter
      * @param   RecurringExpense       $expense    The expense
      * @return  string                 The next expense number.
      */
-    public function getNextRecurringExpenseNumber(RecurringExpense $expense) :string
+    public function getNextRecurringExpenseNumber(RecurringExpense $expense): string
     {
         $this->resetCompanyCounters($expense->company);
 
@@ -362,15 +362,14 @@ trait GeneratesConvertedQuoteCounter
      *
      * @return     bool             True if has shared counter, False otherwise.
      */
-    public function hasSharedCounter(Client $client, string $type = 'quote') : bool
+    public function hasSharedCounter(Client $client, string $type = 'quote'): bool
     {
         if ($type == 'quote') {
             return (bool) $client->getSetting('shared_invoice_quote_counter');
         }
 
         //if ($type == 'credit') {
-            return (bool) $client->getSetting('shared_invoice_credit_counter');
-        
+        return (bool) $client->getSetting('shared_invoice_credit_counter');
     }
 
     /**
@@ -411,7 +410,7 @@ trait GeneratesConvertedQuoteCounter
     }
 
     /*Check if a number is available for use. */
-    public function checkNumberAvailable($class, $entity, $number) :bool
+    public function checkNumberAvailable($class, $entity, $number): bool
     {
         if ($entity = $class::whereCompanyId($entity->company_id)->whereNumber($number)->withTrashed()->exists()) {
             return false;
@@ -426,7 +425,7 @@ trait GeneratesConvertedQuoteCounter
      * @param $entity
      * @param string $counter_name The counter name
      */
-    private function incrementCounter($entity, string $counter_name) :void
+    private function incrementCounter($entity, string $counter_name): void
     {
         $settings = $entity->settings;
 
@@ -445,7 +444,7 @@ trait GeneratesConvertedQuoteCounter
         $entity->save();
     }
 
-    private function prefixCounter($counter, $prefix) : string
+    private function prefixCounter($counter, $prefix): string
     {
         if (strlen($prefix) == 0) {
             return $counter;
@@ -462,7 +461,7 @@ trait GeneratesConvertedQuoteCounter
      *
      * @return     string  the padded counter
      */
-    private function padCounter($counter, $padding) :string
+    private function padCounter($counter, $padding): string
     {
         return str_pad($counter, $padding, '0', STR_PAD_LEFT);
     }
@@ -479,8 +478,16 @@ trait GeneratesConvertedQuoteCounter
         $reset_counter_frequency = (int) $client->getSetting('reset_counter_frequency_id');
 
         if ($reset_counter_frequency == 0) {
+            if ($client->getSetting('reset_counter_date')) {
+                $settings = $client->company->settings;
+                $settings->reset_counter_date = "";
+                $client->company->settings = $settings;
+                $client->company->save();
+            }
+
             return;
         }
+
 
         $timezone = Timezone::find($client->getSetting('timezone_id'));
 
@@ -525,7 +532,7 @@ trait GeneratesConvertedQuoteCounter
                 $new_reset_date = $reset_date->addYears(2);
                 break;
 
-                default:
+            default:
                 $new_reset_date = $reset_date->addYear();
                 break;
         }
@@ -612,7 +619,7 @@ trait GeneratesConvertedQuoteCounter
      *
      * @return     string                The formatted number pattern
      */
-    private function applyNumberPattern($entity, string $counter, $pattern) :string
+    private function applyNumberPattern($entity, string $counter, $pattern): string
     {
         if (! $pattern) {
             return $counter;
@@ -644,7 +651,7 @@ trait GeneratesConvertedQuoteCounter
             $replace[] = str_pad(($user_id), 2, '0', STR_PAD_LEFT);
         }
 
-        $matches = false;
+        $matches = [];
         preg_match('/{\$date:(.*?)}/', $pattern, $matches);
         if (count($matches) > 1) {
             $format = $matches[1];

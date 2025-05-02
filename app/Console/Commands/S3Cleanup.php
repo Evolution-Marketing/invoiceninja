@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Invoice Ninja (https://invoiceninja.com).
+ *
+ * @link https://github.com/invoiceninja/invoiceninja source repository
+ *
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ *
+ * @license https://www.elastic.co/licensing/elastic-license
+ */
+
 namespace App\Console\Commands;
 
 use App\Models\Company;
@@ -38,13 +48,12 @@ class S3Cleanup extends Command
     /**
      * Execute the console command.
      *
-     * @return int
      */
     public function handle()
     {
-        if (! Ninja::isHosted()) {
-            return;
-        }
+        // if (!Ninja::isHosted()) {
+        //     return;
+        // }
 
         $c1 = Company::on('db-ninja-01')->pluck('company_key');
         $c2 = Company::on('db-ninja-02')->pluck('company_key');

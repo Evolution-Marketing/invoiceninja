@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,10 +17,10 @@ use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
 use App\Libraries\MultiDB;
 use App\Mail\Admin\EntityViewedObject;
-use App\Notifications\Admin\EntityViewedNotification;
+use App\Utils\Ninja;
 use App\Utils\Traits\Notifications\UserNotifies;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\App;
 
 class InvitationViewedListener implements ShouldQueue
 {
@@ -44,6 +45,11 @@ class InvitationViewedListener implements ShouldQueue
     {
         MultiDB::setDb($event->company->db);
 
+        App::forgetInstance('translator');
+        $t = app('translator');
+        $t->replace(Ninja::transformTranslations($event->company->settings));
+        App::setLocale($event->company->getLocale());
+
         $entity_name = lcfirst(class_basename($event->entity));
         $invitation = $event->invitation;
 
@@ -53,22 +59,26 @@ class InvitationViewedListener implements ShouldQueue
             $entity_name = 'purchase_order';
         }
 
-        $nmo = new NinjaMailerObject;
-        $nmo->mailable = new NinjaMailer((new EntityViewedObject($invitation, $entity_name))->build());
-        $nmo->company = $invitation->company;
-        $nmo->settings = $invitation->company->settings;
-
         foreach ($invitation->company->company_users as $company_user) {
             $entity_viewed = "{$entity_name}_viewed";
             $entity_viewed_all = "{$entity_name}_viewed_all";
+            $entity_viewed_user = "{$entity_name}_viewed_user";
 
-            $methods = $this->findUserNotificationTypes($invitation, $company_user, $entity_name, ['all_notifications', $entity_viewed, $entity_viewed_all]);
+            $methods = $this->findUserNotificationTypes($invitation, $company_user, $entity_name, ['all_notifications', $entity_viewed, $entity_viewed_all, $entity_viewed_user]);
 
             if (($key = array_search('mail', $methods)) !== false) {
                 unset($methods[$key]);
 
+
+                $nmo = new NinjaMailerObject();
+                $nmo->mailable = new NinjaMailer((new EntityViewedObject($invitation, $entity_name, $company_user->portalType()))->build());
+                $nmo->company = $invitation->company;
+                $nmo->settings = $invitation->company->settings;
+
                 $nmo->to_user = $company_user->user;
-                NinjaMailerJob::dispatch($nmo);
+                (new NinjaMailerJob($nmo))->handle();
+
+                $nmo = null;
             }
         }
     }

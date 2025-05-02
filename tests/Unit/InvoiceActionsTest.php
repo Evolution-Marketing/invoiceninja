@@ -18,8 +18,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers  App\Utils\Traits\Invoice\ActionsInvoice
+ * 
+ *   App\Utils\Traits\Invoice\ActionsInvoice
  */
 class InvoiceActionsTest extends TestCase
 {
@@ -27,7 +27,7 @@ class InvoiceActionsTest extends TestCase
     use DatabaseTransactions;
     use ActionsInvoice;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -43,7 +43,6 @@ class InvoiceActionsTest extends TestCase
 
     public function testInvoiceIsReversable()
     {
-        $this->withoutEvents();
 
         $this->invoice = $this->invoice->service()->markPaid()->save();
 
@@ -54,7 +53,6 @@ class InvoiceActionsTest extends TestCase
 
     public function testInvoiceIsCancellable()
     {
-        $this->withoutEvents();
 
         $payment = PaymentFactory::create($this->invoice->company_id, $this->invoice->user_id);
         $payment->amount = 40;
@@ -73,7 +71,6 @@ class InvoiceActionsTest extends TestCase
 
     public function testInvoiceUnactionable()
     {
-        $this->withoutEvents();
 
         $this->invoice->delete();
 

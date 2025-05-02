@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,6 +15,8 @@ namespace App\DataMapper;
 class InvoiceItem
 {
     public $quantity = 0;
+
+    public $net_cost = 0;
 
     public $cost = 0;
 
@@ -45,6 +48,8 @@ class InvoiceItem
 
     public $gross_line_total = 0;
 
+    public $tax_amount = 0;
+
     public $date = '';
 
     public $custom_value1 = '';
@@ -57,7 +62,19 @@ class InvoiceItem
 
     public $type_id = '1'; //1 = product, 2 = service, 3 unpaid gateway fee, 4 paid gateway fee, 5 late fee, 6 expense
 
+    public $tax_id = '';
+
+    public $task_id = '';
+
+    public $expense_id = '';
+
+    public $unit_code = 'C62';
+
     public static $casts = [
+        'net_cost' => 'float',
+        'task_id' => 'string',
+        'expense_id' => 'string',
+        'tax_id' => 'string',
         'type_id' => 'string',
         'quantity' => 'float',
         'cost' => 'float',
@@ -75,10 +92,12 @@ class InvoiceItem
         'sort_id' => 'string',
         'line_total' => 'float',
         'gross_line_total' => 'float',
+        'tax_amount' => 'float',
         'date' => 'string',
         'custom_value1' => 'string',
         'custom_value2' => 'string',
         'custom_value3' => 'string',
         'custom_value4' => 'string',
+        'unit_code' => 'string',
     ];
 }

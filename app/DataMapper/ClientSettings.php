@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -47,24 +48,24 @@ class ClientSettings extends BaseSettings
         'send_reminders' => 'bool',
     ];
 
-    /**
-     * Cast object values and return entire class
-     * prevents missing properties from not being returned
-     * and always ensure an up to date class is returned.
-     *
-     * @param $obj
-     */
-    public function __construct($obj)
-    {
-        parent::__construct($obj);
-    }
+    // /**
+    //  * Cast object values and return entire class
+    //  * prevents missing properties from not being returned
+    //  * and always ensure an up to date class is returned.
+    //  *
+    //  * @param $obj
+    //  */
+    // public function __construct($obj)
+    // {
+    //     // parent::__construct($obj);
+    // }
 
     /**
      * Default Client Settings scaffold.
      *
      * @return stdClass
      */
-    public static function defaults() : stdClass
+    public static function defaults(): stdClass
     {
         $data = (object) [
             'entity' => (string) Client::class,
@@ -78,14 +79,18 @@ class ClientSettings extends BaseSettings
     /**
      * Merges settings from Company to Client.
      *
-     * @param  stdClass $company_settings
-     * @param  stdClass $client_settings
+     * @param  $company_settings
+     * @param  $client_settings
      * @return stdClass of merged settings
      */
     public static function buildClientSettings($company_settings, $client_settings)
     {
         if (! $client_settings) {
             return $company_settings;
+        }
+
+        if (is_array($client_settings)) {
+            $client_settings = (object)$client_settings;
         }
 
         foreach ($company_settings as $key => $value) {

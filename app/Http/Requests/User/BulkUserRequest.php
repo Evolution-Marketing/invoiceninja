@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,8 +14,8 @@ namespace App\Http\Requests\User;
 
 use App\Http\Requests\Request;
 use App\Http\ValidationRules\Ninja\CanRestoreUserRule;
-use App\Http\ValidationRules\UniqueUserRule;
 use App\Utils\Ninja;
+use Illuminate\Auth\Access\AuthorizationException;
 
 class BulkUserRequest extends Request
 {
@@ -23,8 +24,12 @@ class BulkUserRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
+        if ($this->action == 'delete' && in_array(auth()->user()->hashed_id, $this->ids)) {
+            return false;
+        }
+
         return auth()->user()->isAdmin();
     }
 
@@ -44,5 +49,10 @@ class BulkUserRequest extends Request
         $input = $this->all();
 
         $this->replace($input);
+    }
+
+    protected function failedAuthorization()
+    {
+        throw new AuthorizationException("This Action is unauthorized.");
     }
 }

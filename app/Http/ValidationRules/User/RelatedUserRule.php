@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -48,7 +49,7 @@ class RelatedUserRule implements Rule
      * @param $user_id
      * @return bool
      */
-    private function checkUserIsRelated($user_id) : bool
+    private function checkUserIsRelated($user_id): bool
     {
         if (empty($user_id)) {
             return true;

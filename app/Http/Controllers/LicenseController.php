@@ -1,21 +1,24 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\License\CheckRequest;
 use App\Models\Account;
 use App\Utils\CurlUtils;
 use Carbon\Carbon;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Http;
 use stdClass;
 
 class LicenseController extends BaseController
@@ -28,7 +31,7 @@ class LicenseController extends BaseController
     /**
      * Claim a white label license.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      * @OA\Get(
      *      path="/api/v1/claim_license",
@@ -36,7 +39,6 @@ class LicenseController extends BaseController
      *      tags={"claim_license"},
      *      summary="Attempts to claim a white label license",
      *      description="Attempts to claim a white label license",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(
      *          name="license_key",
@@ -84,10 +86,19 @@ class LicenseController extends BaseController
     {
         $this->checkLicense();
 
+        nlog("License Check::");
+        nlog(config('ninja.environment'));
+        nlog(request()->has('license_key'));
+        nlog(request()->input('license_key', 'No License Found'));
+
         /* Catch claim license requests */
         if (config('ninja.environment') == 'selfhost' && request()->has('license_key')) {
-            $license_key = request()->input('license_key');
+            $license_key = trim(request()->input('license_key'));
             $product_id = 3;
+
+            if (substr($license_key, 0, 3) == 'v5_') {
+                return $this->v5ClaimLicense($license_key, $product_id);
+            }
 
             $url = config('ninja.license_url')."/claim_license?license_key={$license_key}&product_id={$product_id}&get_date=true";
             $data = trim(CurlUtils::get($url));
@@ -95,17 +106,17 @@ class LicenseController extends BaseController
             if ($data == Account::RESULT_FAILURE) {
                 $error = [
                     'message' => trans('texts.invalid_white_label_license'),
-                    'errors' => new stdClass,
+                    'errors' => new stdClass(),
                 ];
 
                 return response()->json($error, 400);
             } elseif ($data) {
-                $date = date_create($data)->modify('+1 year');
+                $date = date_create($data);
 
                 if ($date < date_create()) {
                     $error = [
                         'message' => trans('texts.invalid_white_label_license'),
-                        'errors' => new stdClass,
+                        'errors' => new stdClass(),
                     ];
                     $account = auth()->user()->account;
                     $account->plan_term = Account::PLAN_TERM_YEARLY;
@@ -126,28 +137,90 @@ class LicenseController extends BaseController
 
                     $error = [
                         'message' => trans('texts.bought_white_label'),
-                        'errors' => new stdClass,
+                        'errors' => new stdClass(),
                     ];
 
                     return response()->json($error, 200);
                 }
             } else {
                 $error = [
-                    'message' => trans('texts.white_label_license_error'),
-                    'errors' => new stdClass,
+                    'message' => 'There was an issue connecting to the license server. Please check your network.',
+                    'errors' => new stdClass(),
                 ];
 
                 return response()->json($error, 400);
             }
         }
 
+        nlog("No license key or environment not set to selfhost");
+
         $error = [
             'message' => ctrans('texts.invoice_license_or_environment', ['environment' => config('ninja.environment')]),
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
 
         return response()->json($error, 400);
     }
+
+    public function v5ClaimLicense(string $license_key)
+    {
+        $this->checkLicense();
+
+        /* Catch claim license requests */
+        if (config('ninja.environment') == 'selfhost') {
+
+            if (config('ninja.license_key')) {
+                nlog("License key found in config - using that instead");
+                $license_key = config('ninja.license_key');
+            }
+
+            nlog("Claiming v5 license");
+
+            $response = Http::get("https://invoicing.co/claim_license", [
+                'license_key' => $license_key,
+                'product_id' => 3,
+            ]);
+
+            $payload = $response->json();
+
+            nlog("Ninja Server Response");
+            nlog($payload);
+
+            if ($response->successful() && is_array($payload)) {
+
+                $account = auth()->user()->account;
+
+                $account->plan_term = Account::PLAN_TERM_YEARLY;
+                $account->plan_expires = Carbon::parse($payload['expires'])->format('Y-m-d');
+                $account->plan = Account::PLAN_WHITE_LABEL;
+                $account->save();
+
+                $error = [
+                    'message' => trans('texts.bought_white_label'),
+                    'errors' => new \stdClass(),
+                ];
+
+                return response()->json($error, 200);
+            } else {
+                $error = [
+                    'message' => trans('texts.white_label_license_error'),
+                    'errors' => new stdClass(),
+                ];
+
+                return response()->json($error, 400);
+            }
+        }
+
+        nlog("Environment not set to selfhost - failing");
+
+        $error = [
+            'message' => ctrans('texts.invoice_license_or_environment', ['environment' => config('ninja.environment')]),
+            'errors' => new stdClass(),
+        ];
+
+        return response()->json($error, 400);
+    }
+
 
     private function checkLicense()
     {
@@ -158,5 +231,27 @@ class LicenseController extends BaseController
             $account->plan_expires = null;
             $account->save();
         }
+    }
+
+    public function check(CheckRequest $request): Response|JsonResponse
+    {
+        if (! config('ninja.license_key')) {
+            return response()->json(['message' => ctrans('texts.white_label_license_not_present')], status: 422);
+        }
+
+        $response = Http::baseUrl(config('ninja.hosted_ninja_url'))
+            ->withHeaders([
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])
+            ->post('/api/check/whitelabel', data: [
+                'license' => config('ninja.license_key'),
+            ]);
+
+        if ($response->successful()) {
+            return response()->json($response->json());
+        }
+
+        return response()->json(['message' => $response->json('message')], status: 422);
     }
 }

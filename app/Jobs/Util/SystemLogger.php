@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -23,7 +24,10 @@ use Illuminate\Queue\SerializesModels;
 
 class SystemLogger implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     protected $log;
 
@@ -47,7 +51,7 @@ class SystemLogger implements ShouldQueue
         $this->company = $company;
     }
 
-    public function handle() :void
+    public function handle(): void
     {
         if (! $this->company) {
             nlog('SystemLogger:: No company');
@@ -79,15 +83,26 @@ class SystemLogger implements ShouldQueue
 
         if (! $this->log) {
             nlog('SystemLogger:: no log to store');
-
+            $this->category_id = null;
+            $this->event_id = null;
+            $this->type_id = null;
+            $this->client = null;
+            $this->company = null;
             return;
         }
 
         SystemLog::create($sl);
+
+        $this->log = null;
+        $this->category_id = null;
+        $this->event_id = null;
+        $this->type_id = null;
+        $this->client = null;
+        $this->company = null;
     }
 
     public function failed($e)
     {
-        nlog($e->getMessage());
+        config(['queue.failed.driver' => null]);
     }
 }

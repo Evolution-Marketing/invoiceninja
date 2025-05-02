@@ -13,10 +13,13 @@ namespace Database\Seeders;
 
 use App\DataMapper\ClientSettings;
 use App\DataMapper\CompanySettings;
+use App\DataMapper\FeesAndLimits;
 use App\Events\Payment\PaymentWasCreated;
 use App\Helpers\Invoice\InvoiceSum;
 use App\Helpers\Invoice\InvoiceSumInclusive;
 use App\Models\Account;
+use App\Models\BankIntegration;
+use App\Models\BankTransaction;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\Company;
@@ -32,21 +35,22 @@ use App\Models\Product;
 use App\Models\Quote;
 use App\Models\RecurringInvoice;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Models\VendorContact;
 use App\Repositories\CreditRepository;
 use App\Repositories\InvoiceRepository;
 use App\Repositories\QuoteRepository;
 use App\Utils\Ninja;
+use App\Utils\Traits\AppSetup;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class RandomDataSeeder extends Seeder
 {
     use \App\Utils\Traits\MakesHash;
-
+    use AppSetup;
     /**
      * Run the database seeds.
      *
@@ -55,40 +59,21 @@ class RandomDataSeeder extends Seeder
     public function run()
     {
 
-        /* Warm up the cache !*/
-        $cached_tables = config('ninja.cached_tables');
-
-        foreach ($cached_tables as $name => $class) {
-            if (! Cache::has($name)) {
-                // check that the table exists in case the migration is pending
-                if (! Schema::hasTable((new $class())->getTable())) {
-                    continue;
-                }
-                if ($name == 'payment_terms') {
-                    $orderBy = 'num_days';
-                } elseif ($name == 'fonts') {
-                    $orderBy = 'sort_order';
-                } elseif (in_array($name, ['currencies', 'industries', 'languages', 'countries', 'banks'])) {
-                    $orderBy = 'name';
-                } else {
-                    $orderBy = 'id';
-                }
-                $tableData = $class::orderBy($orderBy)->get();
-                if ($tableData->count()) {
-                    Cache::forever($name, $tableData);
-                }
-            }
-        }
-
         $this->command->info('Running RandomDataSeeder');
 
         Model::unguard();
 
         $faker = \Faker\Factory::create();
-
+        $settings= CompanySettings::defaults();
+        
+        $settings->name = "Random Test Company";
+        $settings->currency_id = '1';
+        $settings->language_id = '1';
+        
         $account = Account::factory()->create();
         $company = Company::factory()->create([
             'account_id' => $account->id,
+            'settings' => $settings,
         ]);
 
         $account->default_company_id = $company->id;
@@ -106,6 +91,7 @@ class RandomDataSeeder extends Seeder
             'account_id' => $account->id,
             'name' => 'test token',
             'token' => \Illuminate\Support\Str::random(64),
+            'is_system' => 1
         ]);
 
         $user->companies()->attach($company->id, [
@@ -118,67 +104,129 @@ class RandomDataSeeder extends Seeder
             'settings' => null,
         ]);
 
-        $u2 = User::where('email', 'demo@invoiceninja.com')->first();
+        $permission_users = [
+            'permissions',
+            'products',
+            'invoices',
+            'quotes',
+            'clients',
+            'vendors',
+            'tasks',
+            'expenses',
+            'projects',
+            'credits',
+            'payments',
+            'bank_transactions',
+            'purchase_orders',
+        ];
 
-        if (! $u2) {
-            $u2 = User::factory()->create([
-                'email'             => 'demo@invoiceninja.com',
-                'password'          => Hash::make('demo'),
-                'account_id' => $account->id,
-                'confirmation_code' => $this->createDbHash(config('database.default')),
+        foreach ($permission_users as $p_user) {
+
+            $user = User::firstOrNew([
+                'email' => "{$p_user}@example.com",
             ]);
 
+            $user->first_name = ucfirst($p_user);
+            $user->last_name = 'Example';
+            $user->password = Hash::make('password');
+            $user->account_id = $account->id;
+            $user->email_verified_at = now();
+            $user->save();
+
             $company_token = CompanyToken::create([
-                'user_id' => $u2->id,
+                'user_id' => $user->id,
                 'company_id' => $company->id,
                 'account_id' => $account->id,
                 'name' => 'test token',
-                'token' => 'TOKEN',
+                'token' => \Illuminate\Support\Str::random(64),
+                'is_system' => 1,
             ]);
 
-            $u2->companies()->attach($company->id, [
+            $user->companies()->attach($company->id, [
                 'account_id' => $account->id,
-                'is_owner' => 1,
-                'is_admin' => 1,
+                'is_owner' => 0,
+                'is_admin' => 0,
                 'is_locked' => 0,
                 'notifications' => CompanySettings::notificationDefaults(),
                 'permissions' => '',
                 'settings' => null,
             ]);
+
+            $user = null;
         }
 
+
+        $user = User::firstOrNew([
+            'email' => 'user@example.com',
+        ]);
+
+        $user->first_name = 'U';
+        $user->last_name = 'ser';
+        $user->password = Hash::make('password');
+        $user->account_id = $account->id;
+        $user->email_verified_at = now();
+        $user->save();
+
+        $user->companies()->attach($company->id, [
+            'account_id' => $account->id,
+            'is_owner' => 1,
+            'is_admin' => 1,
+            'is_locked' => 0,
+            'notifications' => CompanySettings::notificationDefaults(),
+            'permissions' => '',
+            'settings' => null,
+        ]);
+
+        $company_token = CompanyToken::create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'account_id' => $account->id,
+            'name' => 'test token',
+            'token' => \Illuminate\Support\Str::random(64),
+            'is_system' => 1,
+        ]);
+
+
+
         $client = Client::factory()->create([
-            'user_id' => $user->id,
-            'company_id' => $company->id,
-        ]);
-
-        ClientContact::create([
-            'first_name' => $faker->firstName(),
-            'last_name' => $faker->lastName(),
-            'email' => config('ninja.testvars.username'),
-            'company_id' => $company->id,
-            'password' => Hash::make(config('ninja.testvars.password')),
-            'email_verified_at' => now(),
-            'client_id' =>$client->id,
-            'user_id' => $user->id,
-            'is_primary' => true,
-            'contact_key' => \Illuminate\Support\Str::random(40),
-        ]);
-
-        Client::factory()->create(['user_id' => $user->id, 'company_id' => $company->id])->each(function ($c) use ($user, $company) {
-            ClientContact::factory()->create([
                 'user_id' => $user->id,
-                'client_id' => $c->id,
                 'company_id' => $company->id,
-                'is_primary' => 1,
+                'name' => 'cypress'
             ]);
 
-            ClientContact::factory()->count(5)->create([
+        $client->number = $client->getNextClientNumber($client);
+        $client->save();
+        
+        ClientContact::factory()->create([
+                    'user_id' => $user->id,
+                    'client_id' => $client->id,
+                    'company_id' => $company->id,
+                    'is_primary' => 1,
+                    'email' => 'cypress@example.com',
+                    'password' => Hash::make('password'),
+                ]);
+
+
+
+        $vendor = Vendor::factory()->create([
                 'user_id' => $user->id,
-                'client_id' => $c->id,
                 'company_id' => $company->id,
+                'name' => 'cypress'
             ]);
-        });
+
+        $vendor->number = $vendor->getNextVendorNumber($vendor);
+        $vendor->save();
+        
+        VendorContact::factory()->create([
+                    'user_id' => $user->id,
+                    'vendor_id' => $vendor->id,
+                    'company_id' => $company->id,
+                    'is_primary' => 1,
+                    'email' => 'cypress_vendor@example.com',
+                    'password' => Hash::make('password'),
+                ]);
+
+
 
         /* Product Factory */
         Product::factory()->count(2)->create(['user_id' => $user->id, 'company_id' => $company->id]);
@@ -200,8 +248,6 @@ class RandomDataSeeder extends Seeder
 
             $invoice = $invoice_calc->build()->getInvoice();
 
-            $invoice->save();
-
             $invoice->service()->createInvitations()->markSent()->save();
 
             $invoice->ledger()->updateInvoiceBalance($invoice->balance);
@@ -220,18 +266,17 @@ class RandomDataSeeder extends Seeder
 
                 $payment->invoices()->save($invoice);
 
-                $payment_hash = new PaymentHash;
-                $payment_hash->hash = Str::random(128);
-                $payment_hash->data = [['invoice_id' => $invoice->hashed_id, 'amount' => $invoice->balance]];
-                $payment_hash->fee_total = 0;
-                $payment_hash->fee_invoice_id = $invoice->id;
-                $payment_hash->save();
+                // $payment_hash = new PaymentHash;
+                // $payment_hash->hash = Str::random(128);
+                // $payment_hash->data = [['invoice_id' => $invoice->hashed_id, 'amount' => $invoice->balance]];
+                // $payment_hash->fee_total = 0;
+                // $payment_hash->fee_invoice_id = $invoice->id;
+                // $payment_hash->save();
 
                 event(new PaymentWasCreated($payment, $payment->company, Ninja::eventVars()));
 
-                $payment->service()->updateInvoicePayment($payment_hash);
+                // $payment->service()->update_invoicePayment($payment_hash);
 
-                //            UpdateInvoicePayment::dispatchNow($payment, $payment->company);
             }
         });
 
@@ -255,8 +300,6 @@ class RandomDataSeeder extends Seeder
             $credit->save();
 
             $credit->service()->createInvitations()->markSent()->save();
-
-            //$invoice->markSent()->save();
         });
 
         /* Recurring Invoice Factory */
@@ -286,19 +329,23 @@ class RandomDataSeeder extends Seeder
             //$invoice->markSent()->save();
         });
 
-        $clients = Client::all();
-
-        foreach ($clients as $client) {
-            //$client->getNextClientNumber($client);
-            $client->number = $client->getNextClientNumber($client);
-            $client->save();
-        }
-
         GroupSetting::create([
             'company_id' => $company->id,
             'user_id' => $user->id,
             'settings' =>  ClientSettings::buildClientSettings(CompanySettings::defaults(), ClientSettings::defaults()),
             'name' => 'Default Client Settings',
+        ]);
+
+        $bi = BankIntegration::factory()->create([
+            'account_id' => $account->id,
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+        ]);
+
+        BankTransaction::factory()->create([
+            'bank_integration_id' => $bi->id,
+            'user_id' => $user->id,
+            'company_id' => $company->id,
         ]);
 
         if (config('ninja.testvars.stripe')) {
@@ -311,6 +358,13 @@ class RandomDataSeeder extends Seeder
             $cg->require_shipping_address = true;
             $cg->update_details = true;
             $cg->config = encrypt(config('ninja.testvars.stripe'));
+
+            $gateway_types = $cg->driver()->gatewayTypes();
+
+            $fees_and_limits = new \stdClass;
+            $fees_and_limits->{$gateway_types[0]} = new FeesAndLimits;
+
+            $cg->fees_and_limits = $fees_and_limits;
             $cg->save();
 
             $cg = new CompanyGateway;

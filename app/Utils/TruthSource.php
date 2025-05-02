@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -20,6 +21,15 @@ class TruthSource
     public $company_user;
 
     public $company_token;
+
+    public $premium_hosted;
+
+    public function setPremiumHosted($premium_hosted)
+    {
+        $this->premium_hosted = $premium_hosted;
+
+        return $this;
+    }
 
     public function setCompanyUser($company_user)
     {
@@ -47,6 +57,11 @@ class TruthSource
         $this->company_token = $company_token;
 
         return $this;
+    }
+
+    public function getPremiumHosted()
+    {
+        return $this->premium_hosted;
     }
 
     public function getCompany()

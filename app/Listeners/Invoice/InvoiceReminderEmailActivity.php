@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -42,16 +43,26 @@ class InvoiceReminderEmailActivity implements ShouldQueue
     {
         MultiDB::setDb($event->company->db);
 
-        $fields = new stdClass;
+        $fields = new stdClass();
 
-        $user_id = array_key_exists('user_id', $event->event_vars) ? $event->event_vars['user_id'] : $event->invitation->invoice->user_id;
+        $user_id = isset($event->event_vars['user_id']) ? $event->event_vars['user_id'] : $event->invitation->invoice->user_id;
+
+        $reminder = match($event->template) {
+            'reminder1' => 63,
+            'reminder2' => 64,
+            'reminder3' => 65,
+            'reminder_endless' => 66,
+            'endless_reminder' => 66,
+            default => 6,
+        };
 
         $fields->user_id = $user_id;
-        $fields->invoice_id = $event->invitation->invoice->id;
-        $fields->company_id = $event->invitation->invoice->company_id;
-        $fields->client_contact_id = $event->invitation->invoice->client_contact_id;
-        $fields->activity_type_id = $event->reminder;
+        $fields->invoice_id = $event->invitation->invoice_id;
+        $fields->company_id = $event->invitation->company_id;
+        $fields->client_contact_id = $event->invitation->client_contact_id;
+        $fields->client_id = $event->invitation->invoice->client_id;
+        $fields->activity_type_id = $reminder;
 
-        $this->activity_repo->save($fields, $event->invitation->invoice, $event->event_vars);
+        $this->activity_repo->save($fields, $event->invitation, $event->event_vars);
     }
 }

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,10 +15,7 @@ namespace App\Models;
 use App\Helpers\Invoice\InvoiceSum;
 use App\Helpers\Invoice\InvoiceSumInclusive;
 use App\Models\Presenters\RecurringQuotePresenter;
-use App\Models\Quote;
-use App\Models\RecurringQuoteInvitation;
 use App\Services\Recurring\RecurringService;
-use App\Utils\Traits\MakesDates;
 use App\Utils\Traits\MakesHash;
 use App\Utils\Traits\Recurring\HasRecurrence;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -26,13 +24,107 @@ use Laracasts\Presenter\PresentableTrait;
 
 /**
  * Class for Recurring Quotes.
+ *
+ * @property int $id
+ * @property int $client_id
+ * @property int $user_id
+ * @property int|null $assigned_user_id
+ * @property int $company_id
+ * @property int|null $project_id
+ * @property int|null $vendor_id
+ * @property int $status_id
+ * @property float $discount
+ * @property bool $is_amount_discount
+ * @property string|null $number
+ * @property string|null $po_number
+ * @property string|null $date
+ * @property string|null $due_date
+ * @property bool $is_deleted
+ * @property array $line_items
+ * @property object|null $backup
+ * @property string|null $footer
+ * @property string|null $public_notes
+ * @property string|null $private_notes
+ * @property string|null $terms
+ * @property string|null $tax_name1
+ * @property float $tax_rate1
+ * @property string|null $tax_name2
+ * @property float $tax_rate2
+ * @property string|null $tax_name3
+ * @property float $tax_rate3
+ * @property float $total_taxes
+ * @property string|null $custom_value1
+ * @property string|null $custom_value2
+ * @property string|null $custom_value3
+ * @property string|null $custom_value4
+ * @property float $amount
+ * @property float $balance
+ * @property string|null $last_viewed
+ * @property int $frequency_id
+ * @property int $design_id
+ * @property string|null $last_sent_date
+ * @property string|null $next_send_date
+ * @property int|null $remaining_cycles
+ * @property int|null $created_at
+ * @property int|null $updated_at
+ * @property int|null $deleted_at
+ * @property string $auto_bill
+ * @property bool $auto_bill_enabled
+ * @property float $paid_to_date
+ * @property float|null $custom_surcharge1
+ * @property float|null $custom_surcharge2
+ * @property float|null $custom_surcharge3
+ * @property float|null $custom_surcharge4
+ * @property int $custom_surcharge_tax1
+ * @property int $custom_surcharge_tax2
+ * @property int $custom_surcharge_tax3
+ * @property int $custom_surcharge_tax4
+ * @property string|null $due_date_days
+ * @property float $exchange_rate
+ * @property float|null $partial
+ * @property string|null $partial_due_date
+ * @property int|null $subscription_id
+ * @property bool $uses_inclusive_taxes
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Activity> $activities
+ * @property-read int|null $activities_count
+ * @property-read \App\Models\User|null $assigned_user
+ * @property-read \App\Models\Client $client
+ * @property-read \App\Models\Company $company
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Document> $documents
+ * @property-read int|null $documents_count
+ * @property-read mixed $hashed_id
+ * @property-read mixed $status
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Backup> $history
+ * @property-read int|null $history_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\RecurringQuoteInvitation> $invitations
+ * @property-read int|null $invitations_count
+ * @property-read \App\Models\Project|null $project
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Quote> $quotes
+ * @property-read int|null $quotes_count
+ * @property-read \App\Models\User $user
+ * @method static \Illuminate\Database\Eloquent\Builder|BaseModel company()
+ * @method static \Illuminate\Database\Eloquent\Builder|BaseModel exclude($columns)
+ * @method static \Database\Factories\RecurringQuoteFactory factory($count = null, $state = [])
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote filter(\App\Filters\QueryFilters $filters)
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote query()
+ * @method static \Illuminate\Database\Eloquent\Builder|BaseModel scope()
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote withoutTrashed()
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Activity> $activities
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Document> $documents
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Backup> $history
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\RecurringQuoteInvitation> $invitations
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Quote> $quotes
+ * @mixin \Eloquent
  */
 class RecurringQuote extends BaseModel
 {
     use MakesHash;
     use SoftDeletes;
     use Filterable;
-    use MakesDates;
     use HasRecurrence;
     use PresentableTrait;
 
@@ -41,44 +133,44 @@ class RecurringQuote extends BaseModel
     /**
      * Quote Statuses.
      */
-    const STATUS_DRAFT = 1;
+    public const STATUS_DRAFT = 1;
 
-    const STATUS_ACTIVE = 2;
+    public const STATUS_ACTIVE = 2;
 
-    const STATUS_PAUSED = 3;
+    public const STATUS_PAUSED = 3;
 
-    const STATUS_COMPLETED = 4;
+    public const STATUS_COMPLETED = 4;
 
-    const STATUS_PENDING = -1;
+    public const STATUS_PENDING = -1;
 
     /**
      * Quote Frequencies.
      */
-    const FREQUENCY_DAILY = 1;
+    public const FREQUENCY_DAILY = 1;
 
-    const FREQUENCY_WEEKLY = 2;
+    public const FREQUENCY_WEEKLY = 2;
 
-    const FREQUENCY_TWO_WEEKS = 3;
+    public const FREQUENCY_TWO_WEEKS = 3;
 
-    const FREQUENCY_FOUR_WEEKS = 4;
+    public const FREQUENCY_FOUR_WEEKS = 4;
 
-    const FREQUENCY_MONTHLY = 5;
+    public const FREQUENCY_MONTHLY = 5;
 
-    const FREQUENCY_TWO_MONTHS = 6;
+    public const FREQUENCY_TWO_MONTHS = 6;
 
-    const FREQUENCY_THREE_MONTHS = 7;
+    public const FREQUENCY_THREE_MONTHS = 7;
 
-    const FREQUENCY_FOUR_MONTHS = 8;
+    public const FREQUENCY_FOUR_MONTHS = 8;
 
-    const FREQUENCY_SIX_MONTHS = 9;
+    public const FREQUENCY_SIX_MONTHS = 9;
 
-    const FREQUENCY_ANNUALLY = 10;
+    public const FREQUENCY_ANNUALLY = 10;
 
-    const FREQUENCY_TWO_YEARS = 11;
+    public const FREQUENCY_TWO_YEARS = 11;
 
-    const FREQUENCY_THREE_YEARS = 12;
+    public const FREQUENCY_THREE_YEARS = 12;
 
-    const RECURS_INDEFINITELY = -1;
+    public const RECURS_INDEFINITELY = -1;
 
     protected $fillable = [
         'client_id',
@@ -176,7 +268,7 @@ class RecurringQuote extends BaseModel
 
     public function activities()
     {
-        return $this->hasMany(Activity::class)->orderBy('id', 'DESC')->take(50);
+        return $this->hasMany(Activity::class)->where('company_id', $this->company_id)->where('client_id', $this->client_id)->orderBy('id', 'DESC')->take(50);
     }
 
     public function history()
@@ -233,7 +325,7 @@ class RecurringQuote extends BaseModel
         }
     }
 
-    public function nextSendDate() :?Carbon
+    public function nextSendDate(): ?Carbon
     {
         if (! $this->next_send_date) {
             return null;
@@ -313,7 +405,7 @@ class RecurringQuote extends BaseModel
         }
     }
 
-    public function remainingCycles() : int
+    public function remainingCycles(): int
     {
         if ($this->remaining_cycles == 0) {
             return 0;
@@ -324,7 +416,7 @@ class RecurringQuote extends BaseModel
         }
     }
 
-    public function setCompleted() :  void
+    public function setCompleted(): void
     {
         $this->status_id = self::STATUS_COMPLETED;
         $this->next_send_date = null;
@@ -337,68 +429,55 @@ class RecurringQuote extends BaseModel
         switch ($status) {
             case self::STATUS_DRAFT:
                 return '<h4><span class="badge badge-light">'.ctrans('texts.draft').'</span></h4>';
-                break;
             case self::STATUS_PENDING:
                 return '<h4><span class="badge badge-primary">'.ctrans('texts.pending').'</span></h4>';
-                break;
             case self::STATUS_ACTIVE:
                 return '<h4><span class="badge badge-primary">'.ctrans('texts.active').'</span></h4>';
-                break;
             case self::STATUS_COMPLETED:
                 return '<h4><span class="badge badge-success">'.ctrans('texts.status_completed').'</span></h4>';
-                break;
             case self::STATUS_PAUSED:
                 return '<h4><span class="badge badge-danger">'.ctrans('texts.paused').'</span></h4>';
-                break;
             default:
-                // code...
-                break;
+                return '<h4><span class="badge badge-primary">'.ctrans('texts.pending').'</span></h4>';
         }
     }
 
-    public static function frequencyForKey(int $frequency_id) :string
+    public static function frequencyForKey(int $frequency_id): string
     {
         switch ($frequency_id) {
             case self::FREQUENCY_DAILY:
                 return ctrans('texts.freq_daily');
-                break;
             case self::FREQUENCY_WEEKLY:
                 return ctrans('texts.freq_weekly');
-                break;
             case self::FREQUENCY_TWO_WEEKS:
                 return ctrans('texts.freq_two_weeks');
-                break;
             case self::FREQUENCY_FOUR_WEEKS:
                 return ctrans('texts.freq_four_weeks');
-                break;
             case self::FREQUENCY_MONTHLY:
                 return ctrans('texts.freq_monthly');
-                break;
             case self::FREQUENCY_TWO_MONTHS:
                 return ctrans('texts.freq_two_months');
-                break;
             case self::FREQUENCY_THREE_MONTHS:
                 return ctrans('texts.freq_three_months');
-                break;
             case self::FREQUENCY_FOUR_MONTHS:
                 return ctrans('texts.freq_four_months');
-                break;
             case self::FREQUENCY_SIX_MONTHS:
                 return ctrans('texts.freq_six_months');
-                break;
             case self::FREQUENCY_ANNUALLY:
                 return ctrans('texts.freq_annually');
-                break;
             case self::FREQUENCY_TWO_YEARS:
                 return ctrans('texts.freq_two_years');
-                break;
             default:
-                // code...
-                break;
+                return ctrans('texts.freq_weekly');
+
         }
     }
 
-    public function calc()
+    /**
+     * Access the invoice calculator object.
+     * @return InvoiceSumInclusive | InvoiceSum The invoice calculator object getters
+     */
+    public function calc(): InvoiceSumInclusive | InvoiceSum
     {
         $invoice_calc = null;
 
@@ -418,7 +497,6 @@ class RecurringQuote extends BaseModel
      */
     public function recurringDates()
     {
-
         /* Return early if nothing to send back! */
         if ($this->status_id == self::STATUS_COMPLETED ||
             $this->remaining_cycles == 0 ||
@@ -469,10 +547,8 @@ class RecurringQuote extends BaseModel
         switch ($this->due_date_days) {
             case 'terms':
                 return $this->calculateDateFromTerms($date);
-                break;
             default:
-                return $this->setDayOfMonth($date, $this->due_date_days);
-                break;
+                return $this->setDayOfMonth($date, ($this->due_date_days ?? 1));
         }
     }
 
@@ -492,13 +568,14 @@ class RecurringQuote extends BaseModel
             return null;
         }
 
-        return $new_date->addDays($client_payment_terms); //add the number of days in the payment terms to the date
+        return $new_date->addDays((int)$client_payment_terms); //add the number of days in the payment terms to the date
     }
 
     /**
      * Service entry points.
+     * @return RecurringService
      */
-    public function service() :RecurringService
+    public function service(): RecurringService
     {
         return new RecurringService($this);
     }

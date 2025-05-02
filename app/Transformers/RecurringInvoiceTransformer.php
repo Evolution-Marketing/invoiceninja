@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,27 +16,35 @@ use App\Models\Activity;
 use App\Models\Backup;
 use App\Models\Client;
 use App\Models\Document;
-use App\Models\Invoice;
 use App\Models\RecurringInvoice;
 use App\Models\RecurringInvoiceInvitation;
-use App\Transformers\ActivityTransformer;
-use App\Transformers\ClientTransformer;
-use App\Transformers\InvoiceHistoryTransformer;
 use App\Utils\Traits\MakesHash;
 
 class RecurringInvoiceTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         'invitations',
         'documents',
     ];
 
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'activities',
         'client',
+        'location',
     ];
+
+    public function includeLocation(RecurringInvoice $invoice)
+    {
+        $transformer = new LocationTransformer($this->serializer);
+
+        if (!$invoice->location) {
+            return null;
+        }
+
+        return $this->includeItem($invoice->location, $transformer, \App\Models\Location::class);
+    }
 
     public function includeHistory(RecurringInvoice $invoice)
     {
@@ -94,8 +103,8 @@ class RecurringInvoiceTransformer extends EntityTransformer
             'po_number' => $invoice->po_number ?: '',
             'date' => $invoice->date ?: '',
             'last_sent_date' => $invoice->last_sent_date ?: '',
-            // 'next_send_date' => $invoice->next_send_date ?: '',
             'next_send_date' => $invoice->next_send_date_client ?: '',
+            'next_send_datetime' => $invoice->next_send_date ?: '',
             'due_date' => $invoice->due_date ?: '',
             'terms' => $invoice->terms ?: '',
             'public_notes' => $invoice->public_notes ?: '',
@@ -137,6 +146,8 @@ class RecurringInvoiceTransformer extends EntityTransformer
             'due_date_days' => (string) $invoice->due_date_days ?: '',
             'paid_to_date' => (float) $invoice->paid_to_date,
             'subscription_id' => (string) $this->encodePrimaryKey($invoice->subscription_id),
+            'e_invoice' => $invoice->e_invoice ?: new \stdClass(),
+            'location_id' => $this->encodePrimaryKey($invoice->location_id),
         ];
 
         if (request()->has('show_dates') && request()->query('show_dates') == 'true') {

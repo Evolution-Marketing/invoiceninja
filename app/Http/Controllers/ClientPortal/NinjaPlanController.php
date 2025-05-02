@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,7 +15,6 @@ namespace App\Http\Controllers\ClientPortal;
 use App\DataMapper\Analytics\TrialStarted;
 use App\Factory\RecurringInvoiceFactory;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\ClientPortal\Uploads\StoreUploadRequest;
 use App\Libraries\MultiDB;
 use App\Models\Account;
 use App\Models\ClientContact;
@@ -26,12 +25,10 @@ use App\Models\Invoice;
 use App\Models\RecurringInvoice;
 use App\Models\Subscription;
 use App\Notifications\Ninja\NewAccountNotification;
+use App\Repositories\RecurringInvoiceRepository;
 use App\Repositories\SubscriptionRepository;
-use App\Utils\Ninja;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Turbo124\Beacon\Facades\LightLogs;
@@ -43,11 +40,13 @@ class NinjaPlanController extends Controller
     public function index(string $contact_key, string $account_or_company_key)
     {
         MultiDB::findAndSetDbByCompanyKey($account_or_company_key);
-        $company = Company::where('company_key', $account_or_company_key)->first();
+        $company = Company::query()->where('company_key', $account_or_company_key)->first();
 
         if (! $company) {
             MultiDB::findAndSetDbByAccountKey($account_or_company_key);
-            $account = Account::where('key', $account_or_company_key)->first();
+
+            /** @var \App\Models\Account $account **/
+            $account = Account::query()->where('key', $account_or_company_key)->first();
         } else {
             $account = $company->account;
         }
@@ -55,6 +54,8 @@ class NinjaPlanController extends Controller
         if (MultiDB::findAndSetDbByContactKey($contact_key) && $client_contact = ClientContact::where('contact_key', $contact_key)->first()) {
             nlog('Ninja Plan Controller - Found and set Client Contact');
 
+            request()->session()->invalidate();
+            request()->session()->regenerateToken();
             Auth::guard('contact')->loginUsingId($client_contact->id, true);
 
             return $this->plan();
@@ -87,7 +88,12 @@ class NinjaPlanController extends Controller
 
     public function trial_confirmation(Request $request)
     {
+        $trial_started = "Trial Started @ ".now()->format('Y-m-d H:i:s');
+
+        auth()->guard('contact')->user()->fill($request->only(['first_name','last_name']))->save();
+
         $client = auth()->guard('contact')->user()->client;
+        $client->private_notes = $trial_started;
         $client->fill($request->all());
         $client->save();
 
@@ -122,7 +128,7 @@ class NinjaPlanController extends Controller
         $gateway_driver->attach($stripe_response->payment_method, $customer);
         $method = $gateway_driver->getStripePaymentMethod($stripe_response->payment_method);
 
-        $payment_meta = new \stdClass;
+        $payment_meta = new \stdClass();
         $payment_meta->exp_month = (string) $method->card->exp_month;
         $payment_meta->exp_year = (string) $method->card->exp_year;
         $payment_meta->brand = (string) $method->card->brand;
@@ -140,6 +146,8 @@ class NinjaPlanController extends Controller
         //set free trial
         if (auth()->guard('contact')->user()->client->custom_value2) {
             MultiDB::findAndSetDbByAccountKey(auth()->guard('contact')->user()->client->custom_value2);
+
+            /** @var \App\Models\Account $account **/
             $account = Account::where('key', auth()->guard('contact')->user()->client->custom_value2)->first();
             // $account->trial_started = now();
             // $account->trial_plan = 'pro';
@@ -147,6 +155,10 @@ class NinjaPlanController extends Controller
             $account->plan_term = 'month';
             $account->plan_started = now();
             $account->plan_expires = now()->addDays(14);
+            $account->is_trial = true;
+            $account->hosted_company_count = 10;
+            $account->trial_started = now();
+            $account->trial_plan = 'pro';
             $account->save();
         }
 
@@ -154,6 +166,8 @@ class NinjaPlanController extends Controller
 
         //create recurring invoice
         $subscription_repo = new SubscriptionRepository();
+
+        /** @var \App\Models\Subscription $subscription **/
         $subscription = Subscription::find(6);
 
         $recurring_invoice = RecurringInvoiceFactory::create($subscription->company_id, $subscription->user_id);
@@ -178,6 +192,17 @@ class NinjaPlanController extends Controller
                  ->increment()
                  ->queue();
 
+        $old_recurring = RecurringInvoice::query()->where('company_id', config('ninja.ninja_default_company_id'))
+                                            ->where('client_id', $client->id)
+                                            ->where('id', '!=', $recurring_invoice->id)
+                                            ->first();
+
+        if ($old_recurring) {
+            $old_recurring->service()->stop()->save();
+            $old_recurring_repo = new RecurringInvoiceRepository();
+            $old_recurring_repo->archive($old_recurring);
+        }
+
         $ninja_company = Company::on('db-ninja-01')->find(config('ninja.ninja_default_company_id'));
         $ninja_company->notification(new NewAccountNotification($subscription->company->account, $client))->ninja();
 
@@ -195,18 +220,17 @@ class NinjaPlanController extends Controller
 
     public function plan()
     {
-
         // return $this->trial();
         //harvest the current plan
         $data = [];
         $data['late_invoice'] = false;
 
         if (MultiDB::findAndSetDbByAccountKey(Auth::guard('contact')->user()->client->custom_value2)) {
-            $account = Account::where('key', Auth::guard('contact')->user()->client->custom_value2)->first();
+            $account = Account::query()->where('key', Auth::guard('contact')->user()->client->custom_value2)->first();
 
             if ($account) {
                 //offer the option to have a free trial
-                if (! $account->trial_started && ! $account->plan) {
+                if (!$account->plan && !$account->is_trial) {
                     return $this->trial();
                 }
 
@@ -221,10 +245,6 @@ class NinjaPlanController extends Controller
                                            ->orderBy('id', 'DESC')
                                            ->first();
 
-                    //account status means user cannot perform upgrades until they pay their account.
-                    // $data['late_invoice'] = $late_invoice;
-
-                    //14-01-2022 remove late invoices from blocking upgrades
                     $data['late_invoice'] = false;
                 }
 

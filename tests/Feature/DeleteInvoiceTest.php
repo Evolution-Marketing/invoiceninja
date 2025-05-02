@@ -23,7 +23,7 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class DeleteInvoiceTest extends TestCase
 {
@@ -31,7 +31,7 @@ class DeleteInvoiceTest extends TestCase
     use MockAccountData;
     use MakesHash;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -162,6 +162,7 @@ class DeleteInvoiceTest extends TestCase
         $payment = $payment->fresh();
 
         $this->assertTrue($payment->is_deleted);
+        $this->assertEquals(0, $payment->amount);
         $this->assertEquals(4, $payment->status_id);
 
         $client->fresh();
@@ -183,7 +184,6 @@ class DeleteInvoiceTest extends TestCase
         $this->assertEquals(6000, $payment->amount);
         $this->assertFalse($payment->is_deleted);
         $this->assertNull($payment->deleted_at);
-
     }
 
     public function testInvoiceDeletionAfterCancellation()
@@ -302,7 +302,7 @@ class DeleteInvoiceTest extends TestCase
     }
 
     /**
-     * @covers App\Services\Invoice\MarkInvoiceDeleted
+     *  App\Services\Invoice\MarkInvoiceDeleted
      */
     public function testInvoiceDeletion()
     {
@@ -410,7 +410,7 @@ class DeleteInvoiceTest extends TestCase
     }
 
     /**
-     * @covers App\Services\Invoice\HandleRestore
+     *  App\Services\Invoice\HandleRestore
      */
     public function testInvoiceDeletionAndRestoration()
     {

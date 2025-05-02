@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,7 +13,6 @@
 namespace App\Events\Quote;
 
 use App\Models\Company;
-use App\Models\Quote;
 use App\Models\QuoteInvitation;
 use Illuminate\Queue\SerializesModels;
 
@@ -23,27 +23,7 @@ class QuoteWasEmailed
 {
     use SerializesModels;
 
-    public $invitation;
-
-    public $company;
-
-    public $event_vars;
-
-    public $template;
-
-    /**
-     * Create a new event instance.
-     *
-     * @param Quote $quote
-     * @param string $notes
-     * @param Company $company
-     * @param array $event_vars
-     */
-    public function __construct(QuoteInvitation $invitation, Company $company, array $event_vars, string $template)
+    public function __construct(public QuoteInvitation $invitation, public Company $company, public array $event_vars, public string $template)
     {
-        $this->invitation = $invitation;
-        $this->company = $company;
-        $this->event_vars = $event_vars;
-        $this->template = $template;
     }
 }

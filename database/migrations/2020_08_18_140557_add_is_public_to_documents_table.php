@@ -59,10 +59,10 @@ return new class extends Migration {
             $table->boolean('auto_bill_enabled')->default(0);
             $table->unsignedInteger('design_id')->nullable();
             $table->boolean('uses_inclusive_taxes')->default(0);
-            $table->string('custom_surcharge1')->nullable();
-            $table->string('custom_surcharge2')->nullable();
-            $table->string('custom_surcharge3')->nullable();
-            $table->string('custom_surcharge4')->nullable();
+            $table->decimal('custom_surcharge1', 20, 6)->nullable();
+            $table->decimal('custom_surcharge2', 20, 6)->nullable();
+            $table->decimal('custom_surcharge3', 20, 6)->nullable();
+            $table->decimal('custom_surcharge4', 20, 6)->nullable();
             $table->boolean('custom_surcharge_tax1')->default(false);
             $table->boolean('custom_surcharge_tax2')->default(false);
             $table->boolean('custom_surcharge_tax3')->default(false);
@@ -99,7 +99,7 @@ return new class extends Migration {
             $t->timestamps(6);
             $t->softDeletes('deleted_at', 6);
 
-            $t->index(['deleted_at', 'recurring_invoice_id', 'company_id'], 'rec_co_del');
+            $t->index(['recurring_invoice_id', 'deleted_at'], 'rec_co_del');
             $t->unique(['client_contact_id', 'recurring_invoice_id'], 'cli_rec');
         });
     }

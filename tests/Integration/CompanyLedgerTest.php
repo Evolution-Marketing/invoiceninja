@@ -11,30 +11,32 @@
 
 namespace Tests\Integration;
 
-use App\DataMapper\CompanySettings;
-use App\Factory\CompanyUserFactory;
-use App\Models\Account;
+use Tests\TestCase;
+use App\Models\User;
 use App\Models\Client;
-use App\Models\ClientContact;
+use App\Models\Account;
 use App\Models\Company;
-use App\Models\CompanyToken;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\User;
+use App\Models\CompanyToken;
+use App\Models\ClientContact;
+use App\Models\CompanyLedger;
+use App\Utils\Traits\AppSetup;
+use App\DataMapper\InvoiceItem;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Illuminate\Support\Facades\Cache;
+use App\Jobs\Ledger\UpdateLedger;
+use App\DataMapper\CompanySettings;
+use App\Factory\CompanyUserFactory;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
-use Tests\MockAccountData;
-use Tests\TestCase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
-/** @test*/
+/** */
 class CompanyLedgerTest extends TestCase
 {
     use DatabaseTransactions;
     use MakesHash;
+    use AppSetup;
 
     public $company;
 
@@ -46,7 +48,9 @@ class CompanyLedgerTest extends TestCase
 
     public $account;
 
-    protected function setUp() :void
+    public $faker;
+
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -54,29 +58,8 @@ class CompanyLedgerTest extends TestCase
 
         $this->artisan('db:seed --force');
 
-        /* Warm up the cache !*/
-        $cached_tables = config('ninja.cached_tables');
-
-        foreach ($cached_tables as $name => $class) {
-
-            // check that the table exists in case the migration is pending
-            if (! Schema::hasTable((new $class())->getTable())) {
-                continue;
-            }
-            if ($name == 'payment_terms') {
-                $orderBy = 'num_days';
-            } elseif ($name == 'fonts') {
-                $orderBy = 'sort_order';
-            } elseif (in_array($name, ['currencies', 'industries', 'languages', 'countries', 'banks'])) {
-                $orderBy = 'name';
-            } else {
-                $orderBy = 'id';
-            }
-            $tableData = $class::orderBy($orderBy)->get();
-            if ($tableData->count()) {
-                Cache::forever($name, $tableData);
-            }
-        }
+        $this->faker = \Faker\Factory::create();
+        $fake_email = $this->faker->email();
 
         $this->account = Account::factory()->create();
         $this->company = Company::factory()->create([
@@ -93,7 +76,7 @@ class CompanyLedgerTest extends TestCase
         $settings->state = 'State';
         $settings->postal_code = 'Postal Code';
         $settings->phone = '555-343-2323';
-        $settings->email = 'user@example.com';
+        $settings->email = $fake_email;
         $settings->country_id = '840';
         $settings->vat_number = 'vat number';
         $settings->id_number = 'id number';
@@ -106,15 +89,18 @@ class CompanyLedgerTest extends TestCase
         $this->account->default_company_id = $this->company->id;
         $this->account->save();
 
-        $user = User::whereEmail('user@example.com')->first();
+
+        $user = User::whereEmail($fake_email)->first();
 
         if (! $user) {
             $user = User::factory()->create([
+                'email' => $fake_email,
                 'account_id' => $this->account->id,
                 'password' => Hash::make('ALongAndBriliantPassword'),
                 'confirmation_code' => $this->createDbHash(config('database.default')),
             ]);
         }
+        $this->user = $user;
 
         $cu = CompanyUserFactory::create($user->id, $this->company->id, $this->account->id);
         $cu->is_owner = true;
@@ -123,7 +109,7 @@ class CompanyLedgerTest extends TestCase
 
         $this->token = \Illuminate\Support\Str::random(64);
 
-        $company_token = new CompanyToken;
+        $company_token = new CompanyToken();
         $company_token->user_id = $user->id;
         $company_token->company_id = $this->company->id;
         $company_token->account_id = $this->account->id;
@@ -144,6 +130,78 @@ class CompanyLedgerTest extends TestCase
             'is_primary' => 1,
             'send_email' => true,
         ]);
+    }
+
+    public function testLedgerAdjustments()
+    {
+        $c = Client::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'balance' => 0,
+            'paid_to_date' => 0
+        ]);
+
+        $i = Invoice::factory()->create([
+            'client_id' => $c->id,
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'status_id' => Invoice::STATUS_DRAFT,
+            'tax_name1' => '',
+            'tax_name2' => '',
+            'tax_name3' => '',
+            'tax_rate1' => 0,
+            'tax_rate2' => 0,
+            'tax_rate3' => 0,
+            'discount' => 0,
+        ]);
+
+        $item = new InvoiceItem();
+        $item->cost = 10;
+        $item->quantity = 10;
+
+        $i->line_items = [$item];
+        $i->calc()->getInvoice();
+
+        $this->assertEquals(0, $c->balance);
+        $this->assertEquals(100, $i->amount);
+        $this->assertEquals(0, $i->balance);
+
+        $this->assertEquals(0, $i->company_ledger()->count());
+
+        // $i->service()->markSent()->save();
+        // $i = $i->fresh();
+
+        // // \Illuminate\Support\Facades\Bus::fake();
+        // // \Illuminate\Support\Facades\Bus::assertDispatched(UpdateLedger::class);
+
+        // $this->assertEquals(1, $i->company_ledger()->count());
+
+        // $cl = $i->company_ledger()->first();
+        // (new UpdateLedger($cl->id, $i->amount, $i->company->company_key, $i->company->db))->handle();
+
+        // $cl = $cl->fresh();
+
+        // $this->assertEquals(100, $cl->adjustment);
+        // $this->assertEquals(100, $cl->balance);
+
+        // $i->service()->applyPaymentAmount(40, "notes")->save();
+        // $i = $i->fresh();
+
+        // $cl = CompanyLedger::where('client_id', $i->client_id)
+        //                    ->orderBy('id', 'desc')
+        //                    ->first();
+
+        // $cl = $i->company_ledger()->orderBy('id','desc')->first();
+        // (new UpdateLedger($cl->id, $i->amount, $i->company->company_key, $i->company->db))->handle();
+        // $cl = $cl->fresh();
+
+        // nlog($cl->toArray());
+
+        // $this->assertEquals(-40, $cl->adjustment);
+        // $this->assertEquals(60, $cl->balance);
+
+
+
     }
 
     public function testBaseLine()
@@ -226,14 +284,10 @@ class CompanyLedgerTest extends TestCase
             'date' => '2020/12/11',
         ];
 
-        try {
-            $response = $this->withHeaders([
-                'X-API-SECRET' => config('ninja.api_secret'),
-                'X-API-TOKEN' => $this->token,
-            ])->post('/api/v1/payments/', $data);
-        } catch (ValidationException $e) {
-            nlog(print_r($e->validator->getMessageBag(), 1));
-        }
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->postJson('/api/v1/payments/', $data);
 
         $acc = $response->json();
 

@@ -23,7 +23,7 @@ class SystemLogController extends BaseController
      *
      * @param SystemLogFilters $filters The filters
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      * @OA\Get(
      *      path="/api/v1/system_logs",
@@ -33,8 +33,7 @@ class SystemLogController extends BaseController
      *      description="Lists system logs, search and filters allow fine grained lists to be generated.
      *
      *      Query parameters can be added to performed more fine grained filtering of the system logs, these are handled by the SystemLogFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -61,7 +60,10 @@ class SystemLogController extends BaseController
     {
         $system_logs = SystemLog::filter($filters);
 
-        if (auth()->user()->isAdmin()) {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if ($user->isAdmin()) {
             return $this->listResponse($system_logs);
         }
 
@@ -71,13 +73,13 @@ class SystemLogController extends BaseController
     /**
      * Show the form for creating a new resource.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function create()
     {
         $error = [
             'message' => 'Cannot create system log',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
 
         return response()->json($error, 400);
@@ -87,13 +89,13 @@ class SystemLogController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param Request $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function store(Request $request)
     {
         $error = [
             'message' => 'Cannot store system log',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
 
         return response()->json($error, 400);
@@ -104,7 +106,7 @@ class SystemLogController extends BaseController
      *
      * @param Request $request The request
      * @param SystemLog $system_log
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -113,8 +115,7 @@ class SystemLogController extends BaseController
      *      tags={"system_logs"},
      *      summary="Shows a system_logs",
      *      description="Displays a system_logs by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -158,13 +159,13 @@ class SystemLogController extends BaseController
      * Show the form for editing the specified resource.
      *
      * @param  int  $id
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function edit($id)
     {
         $error = [
             'message' => 'Cannot edit system log',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
 
         return response()->json($error, 400);
@@ -175,13 +176,13 @@ class SystemLogController extends BaseController
      *
      * @param Request $request
      * @param  int  $id
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function update(Request $request, $id)
     {
         $error = [
             'message' => 'Cannot update system log',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
 
         return response()->json($error, 400);
@@ -191,13 +192,13 @@ class SystemLogController extends BaseController
      * Remove the specified resource from storage.
      *
      * @param  int  $id
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function destroy($id)
     {
         $error = [
             'message' => 'Cannot destroy system log',
-            'errors' => new stdClass,
+            'errors' => new stdClass(),
         ];
 
         return response()->json($error, 400);

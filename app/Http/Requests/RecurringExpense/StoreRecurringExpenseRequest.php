@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,7 +13,6 @@
 namespace App\Http\Requests\RecurringExpense;
 
 use App\Http\Requests\Request;
-use App\Http\ValidationRules\RecurringExpense\UniqueRecurringExpenseNumberRule;
 use App\Models\RecurringExpense;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Validation\Rule;
@@ -26,47 +26,69 @@ class StoreRecurringExpenseRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', RecurringExpense::class);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('create', RecurringExpense::class);
     }
 
     public function rules()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $rules = [];
 
         if ($this->number) {
-            $rules['number'] = Rule::unique('recurring_expenses')->where('company_id', auth()->user()->company()->id);
+            $rules['number'] = Rule::unique('recurring_expenses')->where('company_id', $user->company()->id);
         }
 
         if (! empty($this->client_id)) {
-            $rules['client_id'] = 'bail|sometimes|exists:clients,id,company_id,'.auth()->user()->company()->id;
+            $rules['client_id'] = 'bail|sometimes|exists:clients,id,company_id,'.$user->company()->id;
         }
 
+        $rules['category_id'] = 'bail|nullable|sometimes|exists:expense_categories,id,company_id,'.$user->company()->id.',is_deleted,0';
         $rules['frequency_id'] = 'required|integer|digits_between:1,12';
         $rules['tax_amount1'] = 'numeric';
         $rules['tax_amount2'] = 'numeric';
         $rules['tax_amount3'] = 'numeric';
+        $rules['currency_id'] = 'bail|required|integer|exists:currencies,id';
+
+        $rules['file'] = 'bail|sometimes|array';
+        $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         return $this->globalRules($rules);
     }
 
     public function prepareForValidation()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $input = $this->all();
 
         $input = $this->decodePrimaryKeys($input);
+
+        if ($this->file('documents') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('documents', [$this->file('documents')]);
+        }
+
+        if ($this->file('file') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('file', [$this->file('file')]);
+        }
 
         if (array_key_exists('next_send_date', $input) && is_string($input['next_send_date'])) {
             $input['next_send_date_client'] = $input['next_send_date'];
         }
 
-        if (array_key_exists('category_id', $input) && is_string($input['category_id'])) {
-            $input['category_id'] = $this->decodePrimaryKey($input['category_id']);
-        }
-
         if (! array_key_exists('currency_id', $input) || strlen($input['currency_id']) == 0) {
-            $input['currency_id'] = (string) auth()->user()->company()->settings->currency_id;
+            $input['currency_id'] = (string) $user->company()->settings->currency_id;
         }
 
         if (array_key_exists('color', $input) && is_null($input['color'])) {

@@ -1,55 +1,51 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
-use App\DataMapper\Analytics\LivePreview;
-use App\Factory\CreditFactory;
-use App\Factory\InvoiceFactory;
-use App\Factory\QuoteFactory;
-use App\Factory\RecurringInvoiceFactory;
-use App\Http\Requests\Invoice\StoreInvoiceRequest;
-use App\Http\Requests\Preview\PreviewInvoiceRequest;
-use App\Jobs\Util\PreviewPdf;
-use App\Libraries\MultiDB;
-use App\Models\Client;
-use App\Models\ClientContact;
-use App\Models\Credit;
-use App\Models\Invoice;
-use App\Models\InvoiceInvitation;
-use App\Models\Quote;
-use App\Models\RecurringInvoice;
-use App\Repositories\CreditRepository;
-use App\Repositories\InvoiceRepository;
-use App\Repositories\QuoteRepository;
-use App\Repositories\RecurringInvoiceRepository;
-use App\Services\PdfMaker\Design;
-use App\Services\PdfMaker\Design as PdfDesignModel;
-use App\Services\PdfMaker\Design as PdfMakerDesign;
-use App\Services\PdfMaker\PdfMaker;
-use App\Utils\HostedPDF\NinjaPdf;
-use App\Utils\HtmlEngine;
 use App\Utils\Ninja;
-use App\Utils\PhantomJS\Phantom;
+use App\Models\Client;
+use App\Models\Invoice;
+use App\Utils\HtmlEngine;
+use Illuminate\Support\Str;
+use Twig\Error\SyntaxError;
+use App\Jobs\Util\PreviewPdf;
+use App\Models\ClientContact;
+use App\Services\Pdf\PdfMock;
 use App\Utils\Traits\MakesHash;
-use App\Utils\Traits\MakesInvoiceHtml;
-use App\Utils\Traits\Pdf\PageNumbering;
-use Illuminate\Support\Facades\App;
+use App\Utils\VendorHtmlEngine;
+use App\Services\Pdf\PdfService;
+use App\Utils\PhantomJS\Phantom;
+use App\Models\InvoiceInvitation;
+use App\Services\PdfMaker\Design;
+use App\Utils\HostedPDF\NinjaPdf;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Lang;
-use Illuminate\Support\Facades\Response;
+use App\Services\PdfMaker\PdfMaker;
+use Illuminate\Support\Facades\App;
+use App\Utils\Traits\GeneratesCounter;
+use App\Utils\Traits\MakesInvoiceHtml;
 use Turbo124\Beacon\Facades\LightLogs;
+use App\Models\PurchaseOrderInvitation;
+use App\Utils\Traits\Pdf\PageNumbering;
+use Illuminate\Support\Facades\Response;
+use App\DataMapper\Analytics\LivePreview;
+use App\Services\Template\TemplateService;
+use App\Http\Requests\Preview\ShowPreviewRequest;
+use App\Http\Requests\Preview\DesignPreviewRequest;
+use App\Http\Requests\Preview\PreviewInvoiceRequest;
 
 class PreviewController extends BaseController
 {
+    use GeneratesCounter;
     use MakesHash;
     use MakesInvoiceHtml;
     use PageNumbering;
@@ -59,423 +55,334 @@ class PreviewController extends BaseController
         parent::__construct();
     }
 
+    public function live(PreviewInvoiceRequest $request): mixed
+    {
+
+        $start = microtime(true);
+
+        /** Build models */
+        $invitation = $request->resolveInvitation();
+        $client = $request->getClient();
+        $settings = $client->getMergedSettings();
+        $entity_prop = str_replace("recurring_", "", $request->entity);
+        $entity_obj = $invitation->{$request->entity};
+        $entity_obj->fill($request->all());
+
+        if (!$entity_obj->id || $request->entity == 'recurring_invoice') {
+            $entity_obj->design_id = intval($this->decodePrimaryKey($settings->{$entity_prop."_design_id"}));
+            $entity_obj->footer = empty($entity_obj->footer) ? $settings->{$entity_prop."_footer"} : $entity_obj->footer;
+            $entity_obj->terms = empty($entity_obj->terms) ? $settings->{$entity_prop."_terms"} : $entity_obj->terms;
+            $entity_obj->public_notes = empty($entity_obj->public_notes) ? $request->getClient()->public_notes : $entity_obj->public_notes;
+
+            $entity_obj->custom_surcharge_tax1 = $client->company->custom_surcharge_taxes1;
+            $entity_obj->custom_surcharge_tax2 = $client->company->custom_surcharge_taxes2;
+            $entity_obj->custom_surcharge_tax3 = $client->company->custom_surcharge_taxes3;
+            $entity_obj->custom_surcharge_tax4 = $client->company->custom_surcharge_taxes4;
+
+            $invitation->setRelation($request->entity, $entity_obj);
+        }
+
+        $ps = new PdfService($invitation, 'product', [
+            'client' => $client ?? false,
+            "{$entity_prop}s" => [$entity_obj],
+        ]);
+
+        $pdf = $ps->boot()->getPdf();
+
+        if (Ninja::isHosted()) {
+            LightLogs::create(new LivePreview())
+                        ->increment()
+                        ->batch();
+        }
+
+        /** Return PDF */
+        return response()->streamDownload(function () use ($pdf) {
+            echo $pdf;
+        }, 'preview.pdf', [
+            'Content-Disposition' => 'inline',
+            'Content-Type' => 'application/pdf',
+            'Cache-Control:' => 'no-cache',
+            'Server-Timing' => (string)(microtime(true) - $start)
+        ]);
+
+    }
+
+    /**
+     * Returns the mocked PDF for the invoice design preview.
+     *
+     * Only used in Settings > Invoice Design as a general overview
+     *
+     * @param  DesignPreviewRequest $request
+     * @return mixed
+     */
+    public function design(DesignPreviewRequest $request): mixed
+    {
+        $start = microtime(true);
+
+        if ($request->has('entity_type') && in_array($request->entity_type, ['payment_receipt', 'payment_refund', 'statement', 'delivery_note'])) {
+            return $this->liveTemplate($request->all());
+        }
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        /** @var \App\Models\Company $company */
+        $company = $user->company();
+
+        $pdf = (new PdfMock($request->all(), $company))->build()->getPdf();
+
+        $response = Response::make($pdf, 200);
+        $response->header('Content-Type', 'application/pdf');
+        $response->header('Server-Timing', (string) (microtime(true) - $start));
+
+        return $response;
+    }
+
     /**
      * Returns a template filled with entity variables.
      *
-     * @return \Illuminate\Http\Response
-     *
-     * @OA\Post(
-     *      path="/api/v1/preview",
-     *      operationId="getPreview",
-     *      tags={"preview"},
-     *      summary="Returns a pdf preview",
-     *      description="Returns a pdf preview.",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
-     *      @OA\Response(
-     *          response=200,
-     *          description="The pdf response",
-     *          @OA\Header(header="X-MINIMUM-CLIENT-VERSION", ref="#/components/headers/X-MINIMUM-CLIENT-VERSION"),
-     *          @OA\Header(header="X-RateLimit-Remaining", ref="#/components/headers/X-RateLimit-Remaining"),
-     *          @OA\Header(header="X-RateLimit-Limit", ref="#/components/headers/X-RateLimit-Limit"),
-     *       ),
-     *       @OA\Response(
-     *          response=422,
-     *          description="Validation error",
-     *          @OA\JsonContent(ref="#/components/schemas/ValidationError"),
-
-     *       ),
-     *       @OA\Response(
-     *           response="default",
-     *           description="Unexpected Error",
-     *           @OA\JsonContent(ref="#/components/schemas/Error"),
-     *       ),
-     *     )
+     * Used in the Custom Designer to preview design changes
+     * @return mixed
      */
-    public function show()
+    public function show(ShowPreviewRequest $request)
     {
-        if (request()->has('entity') &&
-            request()->has('entity_id') &&
-            ! empty(request()->input('entity')) &&
-            ! empty(request()->input('entity_id')) &&
-            request()->has('body')) {
-            $design_object = json_decode(json_encode(request()->input('design')));
+
+
+        if ($request->input('design.is_template')) {
+            return $this->template();
+        }
+
+        if ($request->input('entity', false) &&
+            $request->input('entity_id', false) != '-1') {
+
+            $design_object = json_decode(json_encode($request->input('design')));
 
             if (! is_object($design_object)) {
                 return response()->json(['message' => ctrans('texts.invalid_design_object')], 400);
             }
 
-            $entity = ucfirst(request()->input('entity'));
+            $entity = Str::camel($request->input('entity'));
 
             $class = "App\Models\\$entity";
 
-            $pdf_class = "App\Jobs\\$entity\\Create{$entity}Pdf";
-
-            $entity_obj = $class::whereId($this->decodePrimaryKey(request()->input('entity_id')))->company()->first();
+            $entity_obj = $class::whereId($this->decodePrimaryKey($request->input('entity_id')))->company()->first();
 
             if (! $entity_obj) {
                 return $this->blankEntity();
             }
 
-            $entity_obj->load('client');
+            if ($entity_obj->client) {
+                $entity_obj->load('client');
+                $locale = $entity_obj->client->preferredLocale();
+                $settings = $entity_obj->client->getMergedSettings();
+            } else {
+                $entity_obj->load('vendor');
+                $locale = $entity_obj->vendor->preferredLocale();
+                $settings = $entity_obj->vendor->getMergedSettings();
+            }
 
             App::forgetInstance('translator');
             $t = app('translator');
-            App::setLocale($entity_obj->client->primary_contact()->preferredLocale());
-            $t->replace(Ninja::transformTranslations($entity_obj->client->getMergedSettings()));
+            App::setLocale($locale);
+            $t->replace(Ninja::transformTranslations($settings));
+            $invitation = $entity_obj->invitations()->first();
 
-            $html = new HtmlEngine($entity_obj->invitations()->first());
+            $ps = new PdfService($invitation, 'product', [
+                'client' => $entity_obj->client ?? false,
+                'vendor' => $entity_obj->vendor ?? false,
+                $request->input('entity')."s" => [$entity_obj],
+            ]);
 
-            $design_namespace = 'App\Services\PdfMaker\Designs\\'.request()->design['name'];
+            $ps->boot()
+            ->designer
+            ->buildFromPartials($request->design['design']);
 
-            $design_class = new $design_namespace();
+            $ps->builder
+            ->build();
 
-            $state = [
-                'template' => $design_class->elements([
-                    'client' => $entity_obj->client,
-                    'entity' => $entity_obj,
-                    'pdf_variables' => (array) $entity_obj->company->settings->pdf_variables,
-                    'products' => request()->design['design']['product'],
-                ]),
-                'variables' => $html->generateLabelsAndValues(),
-                'process_markdown' => $entity_obj->client->company->markdown_enabled,
-            ];
-
-            $design = new Design(request()->design['name']);
-            $maker = new PdfMaker($state);
-
-            $maker
-                ->design($design)
-                ->build();
-
-            if (request()->query('html') == 'true') {
-                return $maker->getCompiledHTML();
+            if ($request->query('html') == 'true') {
+                return $ps->getHtml();
             }
 
-            //if phantom js...... inject here..
-            if (config('ninja.phantomjs_pdf_generation') || config('ninja.pdf_generator') == 'phantom') {
-                return (new Phantom)->convertHtmlToPdf($maker->getCompiledHTML(true));
-            }
+            $pdf = $ps->getPdf();
 
-            if (config('ninja.invoiceninja_hosted_pdf_generation') || config('ninja.pdf_generator') == 'hosted_ninja') {
-                $pdf = (new NinjaPdf())->build($maker->getCompiledHTML(true));
+            return response()->streamDownload(function () use ($pdf) {
+                echo $pdf;
+            }, 'preview.pdf', [
+                'Content-Disposition' => 'inline',
+                'Content-Type' => 'application/pdf',
+                'Cache-Control:' => 'no-cache',
+            ]);
 
-                $numbered_pdf = $this->pageNumbering($pdf, auth()->user()->company());
 
-                if ($numbered_pdf) {
-                    $pdf = $numbered_pdf;
-                }
-
-                return $pdf;
-            }
-
-            //else
-
-            $file_path = (new PreviewPdf($maker->getCompiledHTML(true), auth()->user()->company()))->handle();
-            return response()->download($file_path, basename($file_path), ['Cache-Control:' => 'no-cache'])->deleteFileAfterSend(true);
         }
 
         return $this->blankEntity();
     }
 
-    public function live(PreviewInvoiceRequest $request)
+    private function liveTemplate(array $request_data)
     {
-        $company = auth()->user()->company();
 
-        MultiDB::setDb($company->db);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-        if ($request->input('entity') == 'quote') {
-            $repo = new QuoteRepository();
-            $entity_obj = QuoteFactory::create($company->id, auth()->user()->id);
-            $class = Quote::class;
-        } elseif ($request->input('entity') == 'credit') {
-            $repo = new CreditRepository();
-            $entity_obj = CreditFactory::create($company->id, auth()->user()->id);
-            $class = Credit::class;
-        } elseif ($request->input('entity') == 'recurring_invoice') {
-            $repo = new RecurringInvoiceRepository();
-            $entity_obj = RecurringInvoiceFactory::create($company->id, auth()->user()->id);
-            $class = RecurringInvoice::class;
-        } else { //assume it is either an invoice or a null object
-            $repo = new InvoiceRepository();
-            $entity_obj = InvoiceFactory::create($company->id, auth()->user()->id);
-            $class = Invoice::class;
-        }
+        /** @var \App\Models\Company $company */
+        $company = $user->company();
+        $design = \App\Models\Design::query()
+                    ->where('id', $request_data['design_id'])
+                    ->where(function ($q) use ($user) {
+                        $q->whereNull('company_id')->orWhere('company_id', $user->companyId());
+                    })
+                    ->first();
+
+        $ts = (new TemplateService($design));
 
         try {
-            DB::connection(config('database.default'))->beginTransaction();
 
-            if ($request->has('entity_id')) {
-                $entity_obj = $class::on(config('database.default'))
-                                    ->with('client.company')
-                                    ->where('id', $this->decodePrimaryKey($request->input('entity_id')))
-                                    ->where('company_id', $company->id)
-                                    ->withTrashed()
-                                    ->first();
+            if (isset($request_data['settings']) && is_array($request_data['settings'])) {
+                $ts->setSettings(json_decode(json_encode($request_data['settings'])));
             }
 
-            $entity_obj = $repo->save($request->all(), $entity_obj);
-
-            if (! $request->has('entity_id')) {
-                $entity_obj->service()->fillDefaults()->save();
-            }
-
-            App::forgetInstance('translator');
-            $t = app('translator');
-            App::setLocale($entity_obj->client->locale());
-            $t->replace(Ninja::transformTranslations($entity_obj->client->getMergedSettings()));
-
-            $html = new HtmlEngine($entity_obj->invitations()->first());
-
-            $design = \App\Models\Design::find($entity_obj->design_id);
-
-            /* Catch all in case migration doesn't pass back a valid design */
-            if (! $design) {
-                $design = \App\Models\Design::find(2);
-            }
-
-            if ($design->is_custom) {
-                $options = [
-                    'custom_partials' => json_decode(json_encode($design->design), true),
-                ];
-                $template = new PdfMakerDesign(PdfDesignModel::CUSTOM, $options);
-            } else {
-                $template = new PdfMakerDesign(strtolower($design->name));
-            }
-
-            $variables = $html->generateLabelsAndValues();
-
-            $state = [
-                'template' => $template->elements([
-                    'client' => $entity_obj->client,
-                    'entity' => $entity_obj,
-                    'pdf_variables' => (array) $entity_obj->company->settings->pdf_variables,
-                    '$product' => $design->design->product,
-                    'variables' => $variables,
-                ]),
-                'variables' => $variables,
-                'options' => [
-                    'all_pages_header' => $entity_obj->client->getSetting('all_pages_header'),
-                    'all_pages_footer' => $entity_obj->client->getSetting('all_pages_footer'),
-                ],
-                'process_markdown' => $entity_obj->client->company->markdown_enabled,
-            ];
-
-            $maker = new PdfMaker($state);
-
-            $maker
-                ->design($template)
-                ->build();
-
-            DB::connection(config('database.default'))->rollBack();
-
-            if (request()->query('html') == 'true') {
-                return $maker->getCompiledHTML();
-            }
-
-        }
-        catch(\Exception $e){
-            nlog($e->getMessage());
-            DB::connection(config('database.default'))->rollBack();
-
-            return;
+            $ts->setCompany($company)
+                ->compose()
+                ->mock();
+        } catch (SyntaxError $e) {
+            // return response()->json(['message' => 'Twig syntax is invalid.', 'errors' => new \stdClass], 422);
         }
 
-            //if phantom js...... inject here..
-            if (config('ninja.phantomjs_pdf_generation') || config('ninja.pdf_generator') == 'phantom') {
-                return (new Phantom)->convertHtmlToPdf($maker->getCompiledHTML(true));
-            }
-            
-            if(config('ninja.invoiceninja_hosted_pdf_generation') || config('ninja.pdf_generator') == 'hosted_ninja'){
-                $pdf = (new NinjaPdf())->build($maker->getCompiledHTML(true));
-
-                $numbered_pdf = $this->pageNumbering($pdf, auth()->user()->company());
-
-
-            $numbered_pdf = $this->pageNumbering($pdf, auth()->user()->company());
-
-            if ($numbered_pdf) {
-                $pdf = $numbered_pdf;
-            }
-
-            return $pdf;
-        }
-
-        $file_path = (new PreviewPdf($maker->getCompiledHTML(true), $company))->handle();
-
-        if (Ninja::isHosted()) {
-            LightLogs::create(new LivePreview())
-                         ->increment()
-                         ->batch();
-        }
-
-        $response = Response::make($file_path, 200);
+        $response = Response::make($ts->getPdf(), 200);
         $response->header('Content-Type', 'application/pdf');
 
         return $response;
+
+    }
+
+    private function template()
+    {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        /** @var \App\Models\Company $company */
+        $company = $user->company();
+
+        $design_object = json_decode(json_encode(request()->input('design')), true);
+
+        $ts = (new TemplateService());
+
+        try {
+
+            $ts->setCompany($company)
+                ->setTemplate($design_object)
+                ->mock();
+
+        } catch (SyntaxError $e) {
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'invalid data access', 'errors' => ['design.design.body' => $e->getMessage()]], 422);
+        }
+
+        if (request()->query('html') == 'true') {
+            return $ts->getHtml();
+        }
+
+        $response = Response::make($ts->getPdf(), 200);
+        $response->header('Content-Type', 'application/pdf');
+
+        return $response;
+
     }
 
     private function blankEntity()
     {
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        /** @var \App\Models\Company $company */
+        $company = $user->company();
+
         App::forgetInstance('translator');
         $t = app('translator');
-        $t->replace(Ninja::transformTranslations(auth()->user()->company()->settings));
+        $t->replace(Ninja::transformTranslations($company->settings));
 
-        $invitation = InvoiceInvitation::where('company_id', auth()->user()->company()->id)->orderBy('id', 'desc')->first();
+        $entity_string = 'invoice';
+
+        if (request()->input('entity') == 'purchase_order') {
+            $invitation = PurchaseOrderInvitation::where('company_id', $company->id)->orderBy('id', 'desc')->first();
+            $entity_string = 'purchase_order';
+        } else {
+            /** @var \App\Models\InvoiceInvitation $invitation */
+            $invitation = InvoiceInvitation::where('company_id', $company->id)->orderBy('id', 'desc')->first();
+        }
 
         /* If we don't have a valid invitation in the system - create a mock using transactions */
         if (! $invitation) {
             return $this->mockEntity();
         }
 
-        $design_object = json_decode(json_encode(request()->input('design')));
+        $design_object = json_decode(json_encode(request()->input('design')), true);
 
-        if (! is_object($design_object)) {
+        if (! is_array($design_object)) {
             return response()->json(['message' => 'Invalid custom design object'], 400);
         }
 
-        $html = new HtmlEngine($invitation);
+        $ps = new PdfService($invitation, 'product', [
+            'client' => $invitation->client ?? false,
+            'vendor' => $invitation->vendor ?? false,
+            "{$entity_string}s" => [$invitation->{$entity_string}],
+        ]);
 
-        $design = new Design(Design::CUSTOM, ['custom_partials' => request()->design['design']]);
+        $ps->boot()
+        ->designer
+        ->buildFromPartials($design_object['design']);
 
-        $state = [
-            'template' => $design->elements([
-                'client' => $invitation->invoice->client,
-                'entity' => $invitation->invoice,
-                'pdf_variables' => (array) $invitation->invoice->company->settings->pdf_variables,
-                'products' => request()->design['design']['product'],
-            ]),
-            'variables' => $html->generateLabelsAndValues(),
-            'process_markdown' => $invitation->invoice->client->company->markdown_enabled,
-        ];
+        $ps->builder
+        ->build();
 
-        $maker = new PdfMaker($state);
-
-        $maker
-            ->design($design)
-            ->build();
 
         if (request()->query('html') == 'true') {
-            return $maker->getCompiledHTML();
+            return $ps->getHtml();
         }
 
-        if (config('ninja.phantomjs_pdf_generation') || config('ninja.pdf_generator') == 'phantom') {
-            return (new Phantom)->convertHtmlToPdf($maker->getCompiledHTML(true));
-        }
+        $pdf = $ps->getPdf();
 
-        if (config('ninja.invoiceninja_hosted_pdf_generation') || config('ninja.pdf_generator') == 'hosted_ninja') {
-            $pdf = (new NinjaPdf())->build($maker->getCompiledHTML(true));
+        return response()->streamDownload(function () use ($pdf) {
+            echo $pdf;
+        }, 'preview.pdf', [
+            'Content-Disposition' => 'inline',
+            'Content-Type' => 'application/pdf',
+            'Cache-Control:' => 'no-cache',
+        ]);
 
-            $numbered_pdf = $this->pageNumbering($pdf, auth()->user()->company());
-
-            if ($numbered_pdf) {
-                $pdf = $numbered_pdf;
-            }
-
-            return $pdf;
-        }
-
-        $file_path = (new PreviewPdf($maker->getCompiledHTML(true), auth()->user()->company()))->handle();
-
-        $response = Response::make($file_path, 200);
-        $response->header('Content-Type', 'application/pdf');
-
-        return $response;
     }
+
 
     private function mockEntity()
     {
-        DB::connection(auth()->user()->company()->db)->beginTransaction();
 
-        $client = Client::factory()->create([
-            'user_id' => auth()->user()->id,
-            'company_id' => auth()->user()->company()->id,
-        ]);
+        $start = microtime(true);
+        $user = auth()->user();
 
-        $contact = ClientContact::factory()->create([
-            'user_id' => auth()->user()->id,
-            'company_id' => auth()->user()->company()->id,
-            'client_id' => $client->id,
-            'is_primary' => 1,
-            'send_email' => true,
-        ]);
+        /** @var \App\Models\Company $company */
+        $company = $user->company();
 
-        $invoice = Invoice::factory()->create([
-            'user_id' => auth()->user()->id,
-            'company_id' => auth()->user()->company()->id,
-            'client_id' => $client->id,
-            'terms' => 'Sample Terms',
-            'footer' => 'Sample Footer',
-            'public_notes' => 'Sample Public Notes',
-        ]);
+        $request = request()->input('design');
+        $request['entity_type'] = request()->input('entity', 'invoice');
 
-        $invitation = InvoiceInvitation::factory()->create([
-            'user_id' => auth()->user()->id,
-            'company_id' => auth()->user()->company()->id,
-            'invoice_id' => $invoice->id,
-            'client_contact_id' => $contact->id,
-        ]);
-
-        $invoice->setRelation('invitations', $invitation);
-        $invoice->setRelation('client', $client);
-        $invoice->setRelation('company', auth()->user()->company());
-        $invoice->load('client.company');
-
-        $design_object = json_decode(json_encode(request()->input('design')));
-
-        if (! is_object($design_object)) {
-            return response()->json(['message' => 'Invalid custom design object'], 400);
-        }
-
-        $html = new HtmlEngine($invoice->invitations()->first());
-
-        $design = new Design(Design::CUSTOM, ['custom_partials' => request()->design['design']]);
-
-        $state = [
-            'template' => $design->elements([
-                'client' => $invoice->client,
-                'entity' => $invoice,
-                'pdf_variables' => (array) $invoice->company->settings->pdf_variables,
-                'products' => request()->design['design']['product'],
-            ]),
-            'variables' => $html->generateLabelsAndValues(),
-            'process_markdown' => $invoice->client->company->markdown_enabled,
-        ];
-
-        $maker = new PdfMaker($state);
-
-        $maker
-            ->design($design)
-            ->build();
-
-        DB::connection(auth()->user()->company()->db)->rollBack();
+        $pdf = (new PdfMock($request, $company))->build();
 
         if (request()->query('html') == 'true') {
-            return $maker->getCompiledHTML();
+            return $pdf->getHtml();
         }
 
-        if (config('ninja.phantomjs_pdf_generation') || config('ninja.pdf_generator') == 'phantom') {
-            return (new Phantom)->convertHtmlToPdf($maker->getCompiledHTML(true));
-        }
+        $pdf = $pdf->getPdf();
 
-        if (config('ninja.invoiceninja_hosted_pdf_generation') || config('ninja.pdf_generator') == 'hosted_ninja') {
-            $pdf = (new NinjaPdf())->build($maker->getCompiledHTML(true));
-
-            $numbered_pdf = $this->pageNumbering($pdf, auth()->user()->company());
-
-            if ($numbered_pdf) {
-                $pdf = $numbered_pdf;
-            }
-
-            return $pdf;
-        }
-
-
-        $file_path = (new PreviewPdf($maker->getCompiledHTML(true), auth()->user()->company()))->handle();
-
-        $response = Response::make($file_path, 200);
+        $response = Response::make($pdf, 200);
         $response->header('Content-Type', 'application/pdf');
+        $response->header('Server-Timing', (string) (microtime(true) - $start));
 
         return $response;
+
     }
+
 }

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -44,7 +45,7 @@ class FreeCompanySettings extends BaseSettings
 
     public $date_format_id = '';
 
-//    public $enabled_item_tax_rates          = 0;
+    //    public $enabled_item_tax_rates          = 0;
     public $expense_number_pattern = '';
 
     public $expense_number_counter = 1;
@@ -141,7 +142,6 @@ class FreeCompanySettings extends BaseSettings
 
     public static $casts = [
         'portal_design_id'					 => 'string',
-        'currency_id'                        => 'string',
         'task_number_pattern'                => 'string',
         'task_number_counter'                => 'int',
         'expense_number_pattern'             => 'string',
@@ -191,16 +191,16 @@ class FreeCompanySettings extends BaseSettings
         'website'                            => 'string',
     ];
 
-    /**
-     * Cast object values and return entire class
-     * prevents missing properties from not being returned
-     * and always ensure an up to date class is returned.
-     *
-     * @param $obj
-     */
-    public function __construct($obj)
-    {
-    }
+    // /**
+    //  * Cast object values and return entire class
+    //  * prevents missing properties from not being returned
+    //  * and always ensure an up to date class is returned.
+    //  *
+    //  * @param $obj
+    //  */
+    // public function __construct($obj)
+    // {
+    // }
 
     /**
      * Provides class defaults on init.
@@ -223,7 +223,7 @@ class FreeCompanySettings extends BaseSettings
         $data->date_format_id = (string) config('ninja.i18n.date_format_id');
         $data->country_id = (string) config('ninja.i18n.country_id');
         $data->translations = (object) [];
-        $data->pdf_variables = (object) self::getEntityVariableDefaults();
+        // $data->pdf_variables = (object) self::getEntityVariableDefaults();
 
         return self::setCasts($data, self::$casts);
     }

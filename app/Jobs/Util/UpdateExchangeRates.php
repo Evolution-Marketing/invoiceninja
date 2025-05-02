@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -23,7 +24,10 @@ use Illuminate\Support\Facades\Cache;
 
 class UpdateExchangeRates implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public function __construct()
     {
@@ -34,19 +38,7 @@ class UpdateExchangeRates implements ShouldQueue
      *
      * @return void
      */
-    public function handle()
-    {
-        if (config('ninja.db.multi_db_enabled')) {
-            foreach (MultiDB::$dbs as $db) {
-                MultiDB::setDB($db);
-                $this->updateCurrencies();
-            }
-        } else {
-            $this->updateCurrencies();
-        }
-    }
-
-    private function updateCurrencies()
+    public function handle(): void
     {
         info('updating currencies');
 
@@ -56,20 +48,42 @@ class UpdateExchangeRates implements ShouldQueue
 
         $cc_endpoint = sprintf('https://openexchangerates.org/api/latest.json?app_id=%s', config('ninja.currency_converter_api_key'));
 
-        $client = new Client();
-        $response = $client->get($cc_endpoint);
+        if (config('ninja.db.multi_db_enabled')) {
+            foreach (MultiDB::$dbs as $db) {
+                MultiDB::setDB($db);
 
-        $currency_api = json_decode($response->getBody());
+                $client = new Client();
+                $response = $client->get($cc_endpoint);
 
-        /* Update all currencies */
-        Currency::all()->each(function ($currency) use ($currency_api) {
-            $currency->exchange_rate = $currency_api->rates->{$currency->code};
-            $currency->save();
-        });
+                $currency_api = json_decode($response->getBody());
 
-        /* Rebuild the cache */
-        $currencies = Currency::orderBy('name')->get();
+                /* Update all currencies */
+                Currency::all()->each(function ($currency) use ($currency_api) {
+                    $currency->exchange_rate = $currency_api->rates->{$currency->code};
+                    $currency->save();
+                });
 
-        Cache::forever('currencies', $currencies);
+                /* Rebuild the cache */
+                $currencies = Currency::orderBy('name')->get();
+
+                Cache::forever('currencies', $currencies);
+            }
+        } else {
+            $client = new Client();
+            $response = $client->get($cc_endpoint);
+
+            $currency_api = json_decode($response->getBody());
+
+            /* Update all currencies */
+            Currency::all()->each(function ($currency) use ($currency_api) {
+                $currency->exchange_rate = $currency_api->rates->{$currency->code};
+                $currency->save();
+            });
+
+            /* Rebuild the cache */
+            $currencies = Currency::orderBy('name')->get();
+
+            Cache::forever('currencies', $currencies);
+        }
     }
 }

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,6 +13,7 @@
 namespace App\Http\Requests\GroupSetting;
 
 use App\DataMapper\CompanySettings;
+use App\DataMapper\Settings\SettingsData;
 use App\Http\Requests\Request;
 use App\Http\ValidationRules\ValidClientGroupSettingsRule;
 
@@ -22,18 +24,21 @@ class UpdateGroupSettingRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('edit', $this->group_setting);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('edit', $this->group_setting);
     }
 
     public function rules()
     {
-        $rules['settings'] = new ValidClientGroupSettingsRule();
 
-//        $rules['name'] = 'unique:group_settings,name,'.$this->id.',id,company_id,'.$this->group_setting->company_id;
+        return [
+            'settings' => [new ValidClientGroupSettingsRule()],
+        ];
 
-        return $rules;
     }
 
     public function prepareForValidation()
@@ -55,14 +60,18 @@ class UpdateGroupSettingRequest extends Request
      * are saveable
      *
      * @param  object $settings
-     * @return stdClass $settings
+     * @return array $settings
      */
     private function filterSaveableSettings($settings)
     {
-        $account = $this->group_setting->company->account;
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-        if (! $account->isFreeHostedClient()) {
-            return $settings;
+        $settings_data = new SettingsData();
+        $settings = $settings_data->cast($settings)->toObject();
+
+        if (! $user->account->isFreeHostedClient()) {
+            return (array)$settings;
         }
 
         $saveable_casts = CompanySettings::$free_plan_casts;

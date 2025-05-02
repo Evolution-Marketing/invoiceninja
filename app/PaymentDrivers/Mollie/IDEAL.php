@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,13 +19,14 @@ use App\Models\GatewayType;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\Common\MethodInterface;
 use App\PaymentDrivers\MolliePaymentDriver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
-class IDEAL implements MethodInterface
+class IDEAL implements MethodInterface, LivewireMethodInterface
 {
     protected MolliePaymentDriver $mollie;
 
@@ -40,7 +41,7 @@ class IDEAL implements MethodInterface
      * Show the authorization page for iDEAL.
      *
      * @param array $data
-     * @return View
+     * @return \Illuminate\View\View
      */
     public function authorizeView(array $data): View
     {
@@ -51,7 +52,7 @@ class IDEAL implements MethodInterface
      * Handle the authorization for iDEAL.
      *
      * @param Request $request
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function authorizeResponse(Request $request): RedirectResponse
     {
@@ -62,7 +63,7 @@ class IDEAL implements MethodInterface
      * Show the payment page for iDEAL.
      *
      * @param array $data
-     * @return Redirector|RedirectResponse
+     * @return \Illuminate\Http\RedirectResponseor|RedirectResponse
      */
     public function paymentView(array $data)
     {
@@ -171,15 +172,29 @@ class IDEAL implements MethodInterface
      *
      * @param string $status
      * @param ResourcesPayment $payment
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function processSuccessfulPayment(\Mollie\Api\Resources\Payment $payment, string $status = 'paid'): RedirectResponse
     {
+        $p = \App\Models\Payment::query()
+                    ->withTrashed()
+                    ->where('company_id', $this->mollie->client->company_id)
+                    ->where('transaction_reference', $payment->id)
+                    ->first();
+
+        if ($p) {
+            $p->status_id = Payment::STATUS_COMPLETED;
+            $p->save();
+
+            return redirect()->route('client.payments.show', ['payment' => $p->hashed_id]);
+        }
+
         $data = [
             'gateway_type_id' => GatewayType::IDEAL,
             'amount' => array_sum(array_column($this->mollie->payment_hash->invoices(), 'amount')) + $this->mollie->payment_hash->fee_total,
             'payment_type' => PaymentType::IDEAL,
             'transaction_reference' => $payment->id,
+            'idempotency_key' => substr("{$payment->id}{$this->mollie->payment_hash->hash}", 0, 64)
         ];
 
         $payment_record = $this->mollie->createPayment(
@@ -196,17 +211,37 @@ class IDEAL implements MethodInterface
             $this->mollie->client->company,
         );
 
-        return redirect()->route('client.payments.show', ['payment' => $this->mollie->encodePrimaryKey($payment_record->id)]);
+        return redirect()->route('client.payments.show', ['payment' => $payment_record->hashed_id]);
     }
 
     /**
      * Handle 'open' payment status for IDEAL.
      *
      * @param ResourcesPayment $payment
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function processOpenPayment(\Mollie\Api\Resources\Payment $payment): RedirectResponse
     {
         return $this->processSuccessfulPayment($payment, 'open');
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        // Doesn't support, it's offsite payment method.
+
+        return '';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $this->paymentView($data);
+
+        return $data;
     }
 }

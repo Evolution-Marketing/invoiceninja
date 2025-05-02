@@ -6,7 +6,7 @@
         @component('portal.ninja2020.upload.index') @endcomponent
     @endif
 
-    <script src="{{ asset('js/clients/shared/multiple-downloads.js') }}"></script>
+    @vite('resources/js/clients/shared/multiple-downloads.js')
 @endsection
 
 @section('body')
@@ -14,5 +14,5 @@
         @csrf
     </form>
     
-    @livewire('documents-table', ['client' => $client, 'company' => $company])
+    @livewire('documents-table', ['client_id' => $client->id, 'db' => $company->db])
 @endsection

@@ -1,36 +1,47 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Transformers;
 
-
+use App\Models\Activity;
+use App\Models\Backup;
+use App\Models\Document;
+use App\Models\Expense;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderInvitation;
 use App\Models\Vendor;
-use App\Transformers\DocumentTransformer;
 use App\Utils\Traits\MakesHash;
 
 class PurchaseOrderTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         'invitations',
         'documents'
     ];
 
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'expense',
         'vendor',
+        'activities',
     ];
+
+    public function includeActivities(PurchaseOrder $purchase_order)
+    {
+        $transformer = new ActivityTransformer($this->serializer);
+
+        return $this->includeCollection($purchase_order->activities, $transformer, Activity::class);
+    }
 
     public function includeInvitations(PurchaseOrder $purchase_order)
     {
@@ -39,6 +50,12 @@ class PurchaseOrderTransformer extends EntityTransformer
         return $this->includeCollection($purchase_order->invitations, $transformer, PurchaseOrderInvitation::class);
     }
 
+    public function includeHistory(PurchaseOrder $purchase_order)
+    {
+        $transformer = new PurchaseOrderHistoryTransformer($this->serializer);
+
+        return $this->includeCollection($purchase_order->history, $transformer, Backup::class);
+    }
 
     public function includeDocuments(PurchaseOrder $purchase_order)
     {
@@ -46,7 +63,7 @@ class PurchaseOrderTransformer extends EntityTransformer
 
         return $this->includeCollection($purchase_order->documents, $transformer, Document::class);
     }
-    
+
     public function includeExpense(PurchaseOrder $purchase_order)
     {
         $transformer = new ExpenseTransformer($this->serializer);
@@ -62,7 +79,7 @@ class PurchaseOrderTransformer extends EntityTransformer
     {
         $transformer = new VendorTransformer($this->serializer);
 
-        if (!$purchase_order->vendor) {
+        if (!$purchase_order->vendor) {//@phpstan-ignore-line
             return null;
         }
 
@@ -132,7 +149,11 @@ class PurchaseOrderTransformer extends EntityTransformer
             'paid_to_date' => (float)$purchase_order->paid_to_date,
             'subscription_id' => $this->encodePrimaryKey($purchase_order->subscription_id),
             'expense_id' => $this->encodePrimaryKey($purchase_order->expense_id),
+            'currency_id' => $purchase_order->currency_id ? (string) $purchase_order->currency_id : '',
+            'tax_info' => $purchase_order->tax_data ?: new \stdClass(),
+            'e_invoice' => $purchase_order->e_invoice ?: new \stdClass(),
+            'location_id' => $this->encodePrimaryKey($purchase_order->location_id),
+
         ];
     }
-
 }

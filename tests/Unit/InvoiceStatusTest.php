@@ -11,16 +11,14 @@
 
 namespace Tests\Unit;
 
-use App\Factory\InvoiceItemFactory;
-use App\Helpers\Invoice\InvoiceSum;
 use App\Models\Invoice;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers  App\Helpers\Invoice\InvoiceSum
+ * 
+ *   App\Helpers\Invoice\InvoiceSum
  */
 class InvoiceStatusTest extends TestCase
 {
@@ -33,7 +31,7 @@ class InvoiceStatusTest extends TestCase
 
     public $settings;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,14 +23,14 @@ class CompanyUserTransformer extends EntityTransformer
     /**
      * @var array
      */
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         // 'user',
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'user',
         'company',
         'token',
@@ -38,12 +39,13 @@ class CompanyUserTransformer extends EntityTransformer
 
     public function transform(CompanyUser $company_user)
     {
-        $blank_obj = new \stdClass;
+        $blank_obj = new \stdClass();
 
         return [
             'permissions' => $company_user->permissions ?: '',
             'notifications' => $company_user->notifications ? (object) $company_user->notifications : $blank_obj,
             'settings' =>  $company_user->settings ? (object) $company_user->settings : $blank_obj,
+            'react_settings' => $company_user->react_settings ? (object) $company_user->react_settings : $blank_obj,
             'is_owner' => (bool) $company_user->is_owner,
             'is_admin' => (bool) $company_user->is_admin,
             'is_locked' => (bool) $company_user->is_locked,
@@ -79,7 +81,11 @@ class CompanyUserTransformer extends EntityTransformer
 
     public function includeToken(CompanyUser $company_user)
     {
-        $token = $company_user->tokens()->where('company_id', $company_user->company_id)->where('user_id', $company_user->user_id)->first();
+        $token = $company_user->tokens()
+                              ->where('company_id', $company_user->company_id)
+                              ->where('user_id', $company_user->user_id)
+                              ->where('is_system', 1)
+                              ->first();
 
         $transformer = new CompanyTokenTransformer($this->serializer);
 

@@ -11,20 +11,13 @@
 
 namespace Tests\Unit;
 
-use App\Jobs\Util\UploadFile;
-use App\Models\Document;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Routing\Middleware\ThrottleRequests;
-use Illuminate\Support\Facades\Storage;
-use Tests\MockAccountData;
 use Tests\TestCase;
 
 class ZeroDecimalTest extends TestCase
 {
     public array $currencies = ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'];
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
     }
 

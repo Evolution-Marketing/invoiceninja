@@ -1,41 +1,40 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Mail;
 
-use App\Jobs\Entity\CreateEntityPdf;
 use App\Jobs\Invoice\CreateUbl;
 use App\Models\Account;
-use App\Models\Client;
 use App\Models\ClientContact;
-use App\Models\User;
-use App\Services\PdfMaker\Designs\Utilities\DesignHelpers;
 use App\Utils\HtmlEngine;
 use App\Utils\Ninja;
-use App\Utils\TemplateEngine;
-use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class TemplateEmail extends Mailable
 {
     private $build_email;
 
+
+    /** @var \App\Models\Client $client */
     private $client;
 
+    /** @var \App\Models\ClientContact | \App\Models\VendorContact $contact */
     private $contact;
 
+    /** @var \App\Models\Company $company */
     private $company;
 
+    /** @var \App\Models\InvoiceInvitation | \App\Models\QuoteInvitation | \App\Models\CreditInvitation | \App\Models\PurchaseOrderInvitation | \App\Models\RecurringInvoiceInvitation | null $invitation */
     private $invitation;
 
     public function __construct($build_email, ClientContact $contact, $invitation = null)
@@ -51,23 +50,52 @@ class TemplateEmail extends Mailable
         $this->invitation = $invitation;
     }
 
+    /**
+     * Supports inline attachments for large
+     * attachments in custom designs
+     *
+     * @return string
+     */
+    private function buildLinksForCustomDesign(): string
+    {
+        $links = $this->build_email->getAttachmentLinks();
+
+        if (count($links) == 0) {
+            return '';
+        }
+
+        $link_string = '<ul>';
+        $link_string .= "<li>{ctrans('texts.download_files')}</li>";
+        foreach ($this->build_email->getAttachmentLinks() as $link) {
+            $link_string .= "<li>{$link}</li>";
+        }
+
+        $link_string .= '</ul>';
+
+        return $link_string;
+    }
+
     public function build()
     {
         $template_name = 'email.template.'.$this->build_email->getTemplate();
 
-        if ($this->build_email->getTemplate() == 'light' || $this->build_email->getTemplate() == 'dark') {
+        if (in_array($this->build_email->getTemplate(), ['light', 'dark'])) {
             $template_name = 'email.template.client';
         }
 
+        if ($this->build_email->getTemplate() == 'premium') {
+            $template_name = 'email.template.client_premium';
+        }
+
         if ($this->build_email->getTemplate() == 'custom') {
-            $this->build_email->setBody(str_replace('$body', $this->build_email->getBody(), $this->client->getSetting('email_style_custom')));
+            $this->build_email->setBody(str_replace('$body', $this->build_email->getBody().$this->buildLinksForCustomDesign(), $this->client->getSetting('email_style_custom')));
         }
 
         $settings = $this->client->getMergedSettings();
 
         if ($this->build_email->getTemplate() !== 'custom') {
             $this->build_email->setBody(
-                DesignHelpers::parseMarkdownToHtml($this->build_email->getBody())
+                \App\Services\Pdf\Markdown::parse($this->build_email->getBody())
             );
         }
 
@@ -90,15 +118,18 @@ class TemplateEmail extends Mailable
 
         if (strlen($settings->bcc_email) > 1) {
             if (Ninja::isHosted()) {
-                $bccs = explode(',', str_replace(' ', '', $settings->bcc_email));
-                $this->bcc(array_slice($bccs, 0, 2));
-                //$this->bcc(reset($bccs)); //remove whitespace if any has been inserted.
+
+                if ($company->account->isPaid()) {
+                    $bccs = explode(',', str_replace(' ', '', $settings->bcc_email));
+                    $this->bcc(array_slice($bccs, 0, 5));
+                }
+
             } else {
                 $this->bcc(explode(',', str_replace(' ', '', $settings->bcc_email)));
-            }//remove whitespace if any has been inserted.
+            }
         }
 
-        $this->subject($this->build_email->getSubject())
+        $this->subject(str_replace("<br>", "", $this->build_email->getSubject()))
             ->text('email.template.text', [
                 'text_body' => $this->build_email->getTextBody(),
                 'whitelabel' => $this->client->user->account->isPaid() ? true : false,
@@ -116,52 +147,68 @@ class TemplateEmail extends Mailable
                 'company' => $company,
                 'whitelabel' => $this->client->user->account->isPaid() ? true : false,
                 'logo' => $this->company->present()->logo($settings),
+                'links' => $this->build_email->getAttachmentLinks(),
+                'email_preferences' => (Ninja::isHosted() && $this->invitation && in_array($settings->email_sending_method, ['default', 'mailgun'])) ? $this->company->domain() . URL::signedRoute('client.email_preferences', ['entity' => $this->invitation->getEntityString(), 'invitation_key' => $this->invitation->key], absolute: false) : false,
             ]);
 
-        /*In the hosted platform we need to slow things down a little for Storage to catch up.*/
-
-        if(Ninja::isHosted() && $this->invitation){
-
-            $path = false;
-
-            if($this->invitation->invoice)
-                $path = $this->client->invoice_filepath($this->invitation).$this->invitation->invoice->numberFormatter().'.pdf';
-            elseif($this->invitation->quote)
-                $path = $this->client->quote_filepath($this->invitation).$this->invitation->quote->numberFormatter().'.pdf';
-            elseif($this->invitation->credit)
-                $path = $this->client->credit_filepath($this->invitation).$this->invitation->credit->numberFormatter().'.pdf';
-
-            sleep(1);
-
-            if($path && !Storage::disk(config('filesystems.default'))->exists($path)){
-
-                sleep(2);
-
-                if(!Storage::disk(config('filesystems.default'))->exists($path)) {
-                    (new CreateEntityPdf($this->invitation))->handle();
-                    sleep(2);
-                }
-
-            }
-
-        }
-
         foreach ($this->build_email->getAttachments() as $file) {
-            if (is_string($file)) {
-                $this->attach($file);
-            } elseif (is_array($file)) {
+            if (array_key_exists('file', $file)) {
+                $this->attachData(base64_decode($file['file']), $file['name']);
+            } else {
                 $this->attach($file['path'], ['as' => $file['name'], 'mime' => null]);
             }
         }
 
-        if ($this->invitation && $this->invitation->invoice && $settings->ubl_email_attachment && $this->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
+        if (!$this->invitation) {
+            return $this;
+        }
+
+        if ($this->invitation->invoice && $settings->ubl_email_attachment && !$this->invitation->invoice->client->getSetting('enable_e_invoice') && $this->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
             $ubl_string = (new CreateUbl($this->invitation->invoice))->handle();
 
             if ($ubl_string) {
                 $this->attachData($ubl_string, $this->invitation->invoice->getFileName('xml'));
             }
+
         }
 
+        if ($this->invitation->invoice) { //@phpstan-ignore-line
+            if (!$this->invitation->invoice->client->getSetting('merge_e_invoice_to_pdf') && $this->invitation->invoice->client->getSetting('enable_e_invoice') && $this->invitation->invoice->client->getSetting('ubl_email_attachment') && $this->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
+                $xml_string = $this->invitation->invoice->service()->getEInvoice($this->invitation->contact);
+
+                if ($xml_string) {
+                    $this->attachData($xml_string, $this->invitation->invoice->getEFileName("xml"));
+                }
+
+            }
+        } elseif ($this->invitation->credit) {//@phpstan-ignore-line
+            if (!$this->invitation->credit->client->getSetting('merge_e_invoice_to_pdf') && $this->invitation->invoice->client->getSetting('ubl_email_attachment') && $this->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
+                $xml_string = $this->invitation->credit->service()->getECredit($this->invitation->contact);
+
+                if ($xml_string) {
+                    $this->attachData($xml_string, $this->invitation->credit->getEFileName("xml"));
+                }
+
+            }
+        } elseif ($this->invitation->quote) {//@phpstan-ignore-line
+            if (!$this->invitation->quote->client->getSetting('merge_e_invoice_to_pdf') && $this->invitation->quote->client->getSetting('enable_e_invoice') && $this->invitation->quote->client->getSetting('ubl_email_attachment') && $this->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
+                $xml_string = $this->invitation->quote->service()->getEQuote($this->invitation->contact);
+
+                if ($xml_string) {
+                    $this->attachData($xml_string, $this->invitation->quote->getEFileName("xml"));
+                }
+
+            }
+        } elseif ($this->invitation->purchase_order) {
+            if (!$this->invitation->purchase_order->vendor->getSetting('merge_e_invoice_to_pdf') && $this->invitation->purchase_order->vendor->getSetting('enable_e_invoice') && $this->invitation->purchase_order->vendor->getSetting('ubl_email_attachment') && $this->company->account->hasFeature(Account::FEATURE_PDF_ATTACHMENT)) {
+                $xml_string = $this->invitation->purchase_order->service()->getEPurchaseOrder($this->invitation->contact);
+
+                if ($xml_string) {
+                    $this->attachData($xml_string, $this->invitation->purchase_order->getEFileName("xml"));
+                }
+
+            }
+        }
         return $this;
     }
 }

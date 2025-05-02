@@ -11,14 +11,10 @@
 
 namespace Tests\Feature\Import\Invoicely;
 
-use App\Import\Providers\BaseImport;
 use App\Import\Providers\Invoicely;
-use App\Import\Providers\Zoho;
 use App\Import\Transformer\BaseTransformer;
 use App\Models\Client;
 use App\Models\Invoice;
-use App\Models\Product;
-use App\Models\Vendor;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -28,8 +24,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Import\Providers\Invoicely
+ * 
+ *  App\Import\Providers\Invoicely
  */
 class InvoicelyTest extends TestCase
 {
@@ -158,7 +154,8 @@ class InvoicelyTest extends TestCase
         $count = $csv_importer->import('invoice');
 
         $base_transformer = new BaseTransformer($this->company);
-        nlog($count);
+
+
         $this->assertTrue($base_transformer->hasInvoice('INV-1'));
 
         $invoice_id = $base_transformer->getInvoiceId('INV-1');

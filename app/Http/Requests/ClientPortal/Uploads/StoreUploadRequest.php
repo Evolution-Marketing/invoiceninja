@@ -1,14 +1,14 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
-
 
 namespace App\Http\Requests\ClientPortal\Uploads;
 
@@ -23,6 +23,12 @@ class StoreUploadRequest extends FormRequest
      */
     public function authorize()
     {
+
+        /** @phpstan-ignore-next-line **/
+        auth()->guard('contact')->user()->loadMissing(['client' => function ($query) {
+            $query->without('gateway_tokens', 'documents', 'contacts.company', 'contacts'); // Exclude 'grandchildren' relation of 'client'
+        }]);
+
         return (bool) auth()->guard('contact')->user()->client->getSetting('client_portal_enable_uploads');
     }
 

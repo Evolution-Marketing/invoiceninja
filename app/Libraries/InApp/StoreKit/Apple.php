@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -50,15 +51,15 @@ class Apple
         ];
 
         $payload = [
-            'iss'=> $this->issuer_id,
-            'iat'=> $issue_time,
-            'exp'=> $expiration_time,
-            'aud'=> 'appstoreconnect-v1',
-            'nonce'=> $this->guidv4(),
-            'bid'=> $this->bundle_id,
+            'iss' => $this->issuer_id,
+            'iat' => $issue_time,
+            'exp' => $expiration_time,
+            'aud' => 'appstoreconnect-v1',
+            'nonce' => $this->guidv4(),
+            'bid' => $this->bundle_id,
         ];
 
-        $jwt = JWT::encode($payload, $this->private_key, $this->alg, $header);
+        $jwt = JWT::encode($payload, $this->private_key, $this->alg, null, $header);
 
         $decoded = JWT::decode($jwt, new Key($this->private_key, $this->alg));
 

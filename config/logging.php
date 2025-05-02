@@ -56,12 +56,19 @@ return [
             'driver' => 'single',
             'path' => storage_path('logs/invoiceninja.log'),
             'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 7,
         ],
-
+        'invoiceninja-reminders' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/invoiceninja-reminders.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 90,
+        ],
         'stack' => [
             'driver' => 'stack',
             'channels' => ['single'],
             'ignore_exceptions' => false,
+            'days' => 7,
         ],
 
         'single' => [

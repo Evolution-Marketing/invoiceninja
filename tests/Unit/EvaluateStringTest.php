@@ -15,12 +15,22 @@ use App\Models\Client;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class EvaluateStringTest extends TestCase
 {
+    public function testNumericCleanup()
+    {
+        $string = '13/favicon.ico';
+
+        $number = preg_replace('~\D~', '', $string);
+
+        $this->assertEquals(13, $number);
+    }
+
     public function testClassNameResolution()
     {
         $this->assertEquals(class_basename(Client::class), 'Client');
     }
+
 }

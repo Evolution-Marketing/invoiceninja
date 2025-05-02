@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,11 +23,10 @@ use Illuminate\Queue\SerializesModels;
  */
 class AccountCreated
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable;
+    use InteractsWithSockets;
+    use SerializesModels;
 
-    /**
-     * @var
-     */
     public $user;
 
     public $company;
@@ -47,13 +47,14 @@ class AccountCreated
         $this->event_vars = $event_vars;
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return Channel|array
-     */
+    // /**
+    //  * Get the channels the event should broadcast on.
+    //  *
+    //  * @return Channel|array
+    //  */
     public function broadcastOn()
     {
-        return new PrivateChannel('channel-name');
+        return [];
+        //  return new PrivateChannel('channel-name');
     }
 }

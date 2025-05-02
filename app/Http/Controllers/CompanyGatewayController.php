@@ -1,35 +1,40 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
+use App\Libraries\MultiDB;
+use Illuminate\Http\Response;
+use App\Models\CompanyGateway;
+use App\Utils\Traits\MakesHash;
 use App\DataMapper\FeesAndLimits;
+use App\Jobs\Util\ApplePayDomain;
+use Illuminate\Support\Facades\Cache;
 use App\Factory\CompanyGatewayFactory;
 use App\Filters\CompanyGatewayFilters;
-use App\Http\Requests\CompanyGateway\CreateCompanyGatewayRequest;
-use App\Http\Requests\CompanyGateway\DestroyCompanyGatewayRequest;
+use App\Repositories\CompanyRepository;
+use Illuminate\Foundation\Bus\DispatchesJobs;
+use App\Transformers\CompanyGatewayTransformer;
+use App\PaymentDrivers\Stripe\Jobs\StripeWebhook;
+use App\PaymentDrivers\CheckoutCom\CheckoutSetupWebhook;
+use App\Http\Requests\CompanyGateway\BulkCompanyGatewayRequest;
 use App\Http\Requests\CompanyGateway\EditCompanyGatewayRequest;
 use App\Http\Requests\CompanyGateway\ShowCompanyGatewayRequest;
+use App\Http\Requests\CompanyGateway\TestCompanyGatewayRequest;
 use App\Http\Requests\CompanyGateway\StoreCompanyGatewayRequest;
+use App\Http\Requests\CompanyGateway\CreateCompanyGatewayRequest;
 use App\Http\Requests\CompanyGateway\UpdateCompanyGatewayRequest;
-use App\Jobs\Util\ApplePayDomain;
-use App\Models\Client;
-use App\Models\CompanyGateway;
-use App\PaymentDrivers\Stripe\Jobs\StripeWebhook;
-use App\Repositories\CompanyRepository;
-use App\Transformers\CompanyGatewayTransformer;
-use App\Utils\Traits\MakesHash;
-use Illuminate\Foundation\Bus\DispatchesJobs;
-use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use App\Http\Requests\CompanyGateway\DestroyCompanyGatewayRequest;
 
 /**
  * Class CompanyGatewayController.
@@ -49,6 +54,12 @@ class CompanyGatewayController extends BaseController
 
     private array $stripe_keys = ['d14dd26a47cecc30fdd65700bfb67b34', 'd14dd26a37cecc30fdd65700bfb55b23'];
 
+    private string $checkout_key = '3758e7f7c6f4cecf0f4f348b9a00f456';
+
+    private string $forte_key = 'kivcvjexxvdiyqtj3mju5d6yhpeht2xs';
+
+    private string $cbapowerboard_key = 'b67581d804dbad1743b61c57285142ad';
+
     /**
      * CompanyGatewayController constructor.
      * @param CompanyRepository $company_repo
@@ -63,7 +74,7 @@ class CompanyGatewayController extends BaseController
     /**
      * Display a listing of the resource.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -75,8 +86,7 @@ class CompanyGatewayController extends BaseController
      *      description="Lists company_gateways, search and filters allow fine grained lists to be generated.
 
         Query parameters can be added to performed more fine grained filtering of the company_gateways, these are handled by the CompanyGatewayFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -111,7 +121,7 @@ class CompanyGatewayController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateCompanyGatewayRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -121,8 +131,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Gets a new blank CompanyGateway object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -148,7 +157,11 @@ class CompanyGatewayController extends BaseController
      */
     public function create(CreateCompanyGatewayRequest $request)
     {
-        $company_gateway = CompanyGatewayFactory::create(auth()->user()->company()->id, auth()->user()->id);
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $company_gateway = CompanyGatewayFactory::create($user->company()->id, auth()->user()->id);
 
         return $this->itemResponse($company_gateway);
     }
@@ -157,7 +170,7 @@ class CompanyGatewayController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreCompanyGatewayRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -167,8 +180,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Adds a CompanyGateway",
      *      description="Adds an CompanyGateway to the system",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -194,25 +206,83 @@ class CompanyGatewayController extends BaseController
      */
     public function store(StoreCompanyGatewayRequest $request)
     {
-        $company_gateway = CompanyGatewayFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $company_gateway = CompanyGatewayFactory::create($user->company()->id, $user->id);
         $company_gateway->fill($request->all());
         $company_gateway->save();
 
         /*Always ensure at least one fees and limits object is set per gateway*/
-        if (! isset($company_gateway->fees_and_limits)) {
-            $gateway_types = $company_gateway->driver(new Client)->gatewayTypes();
+        $gateway_types = $company_gateway->driver(new Client())->getAvailableMethods();
 
-            $fees_and_limits = new \stdClass;
-            $fees_and_limits->{$gateway_types[0]} = new FeesAndLimits;
+        $fees_and_limits = $company_gateway->fees_and_limits;
 
-            $company_gateway->fees_and_limits = $fees_and_limits;
-            $company_gateway->save();
+        foreach ($gateway_types as $key => $gateway_type) {
+            if (!property_exists($fees_and_limits, $key)) {
+                $fees_and_limits->{$key} = new FeesAndLimits();
+            }
         }
+
+        $company_gateway->fees_and_limits = $fees_and_limits;
+        $company_gateway->save();
 
         ApplePayDomain::dispatch($company_gateway, $company_gateway->company->db);
 
-        if (in_array($company_gateway->gateway_key, $this->stripe_keys)) {
-            StripeWebhook::dispatch($company_gateway->company->company_key, $company_gateway->id);
+        switch ($company_gateway->gateway_key) {
+            case in_array($company_gateway->gateway_key, $this->stripe_keys):
+                StripeWebhook::dispatch($company_gateway->company->company_key, $company_gateway->id);
+                break;
+
+            case $this->checkout_key:
+                CheckoutSetupWebhook::dispatch($company_gateway->company->company_key, $company_gateway->id);
+                break;
+
+            case $this->forte_key:
+
+                $config = $company_gateway->getConfig();
+
+                $config->authOrganizationId = !str_starts_with($config->authOrganizationId, 'org_')
+                    ? 'org_' . $config->authOrganizationId
+                    : $config->authOrganizationId;
+
+                $config->organizationId = !str_starts_with($config->organizationId, 'org_')
+                    ? 'org_' . $config->organizationId
+                    : $config->organizationId;
+
+                $config->locationId = !str_starts_with($config->locationId, 'loc_')
+                    ? 'loc_' . $config->locationId
+                    : $config->locationId;
+
+                $company_gateway->setConfig($config);
+                $company_gateway->save();
+
+                dispatch(function () use ($company_gateway) {
+                    MultiDB::setDb($company_gateway->company->db);
+                    $company_gateway->driver()->updateFees();
+                })->afterResponse();
+
+                break;
+
+            case $this->cbapowerboard_key:
+
+                dispatch(function () use ($company_gateway) {
+                    MultiDB::setDb($company_gateway->company->db);
+                    $company_gateway->driver()->init()->settings()->updateSettings();
+                })->afterResponse();
+
+                $config = $company_gateway->getConfig();
+                $config->visa = true;
+                $config->mastercard = true;
+                $company_gateway->setConfig($config);
+                $company_gateway->save();
+
+                break;
+
+            default:
+                # code...
+                break;
+
         }
 
         return $this->itemResponse($company_gateway);
@@ -223,7 +293,7 @@ class CompanyGatewayController extends BaseController
      *
      * @param ShowCompanyGatewayRequest $request
      * @param CompanyGateway $company_gateway
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -232,8 +302,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Shows an CompanyGateway",
      *      description="Displays an CompanyGateway by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -278,7 +347,7 @@ class CompanyGatewayController extends BaseController
      *
      * @param EditCompanyGatewayRequest $request
      * @param CompanyGateway $company_gateway
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -287,8 +356,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Shows an CompanyGateway for editting",
      *      description="Displays an CompanyGateway by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -333,7 +401,7 @@ class CompanyGatewayController extends BaseController
      *
      * @param UpdateCompanyGatewayRequest $request
      * @param CompanyGateway $company_gateway
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Put(
@@ -342,8 +410,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Updates an CompanyGateway",
      *      description="Handles the updating of an CompanyGateway by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -382,13 +449,58 @@ class CompanyGatewayController extends BaseController
     {
         $company_gateway->fill($request->all());
 
-        if (! $request->has('fees_and_limits')) {
-            $company_gateway->fees_and_limits = '';
+        /*Always ensure at least one fees and limits object is set per gateway*/
+        $gateway_types = $company_gateway->driver(new Client())->getAvailableMethods();
+
+        $fees_and_limits = $company_gateway->fees_and_limits;
+
+        foreach ($gateway_types as $key => $gateway_type) {
+            if (!property_exists($fees_and_limits, $key)) {
+                $fees_and_limits->{$key} = new FeesAndLimits();
+            }
         }
 
+        $company_gateway->fees_and_limits = $fees_and_limits;
         $company_gateway->save();
 
-        // ApplePayDomain::dispatch($company_gateway, $company_gateway->company->db);
+        switch ($company_gateway->gateway_key) {
+
+            case $this->checkout_key:
+                CheckoutSetupWebhook::dispatch($company_gateway->company->company_key, $company_gateway->id);
+                break;
+
+            case $this->forte_key:
+
+                $config = $company_gateway->getConfig();
+
+                $config->authOrganizationId = !str_starts_with($config->authOrganizationId, 'org_')
+                    ? 'org_' . $config->authOrganizationId
+                    : $config->authOrganizationId;
+
+                $config->organizationId = !str_starts_with($config->organizationId, 'org_')
+                    ? 'org_' . $config->organizationId
+                    : $config->organizationId;
+
+                $config->locationId = !str_starts_with($config->locationId, 'loc_')
+                    ? 'loc_' . $config->locationId
+                    : $config->locationId;
+
+                $company_gateway->setConfig($config);
+                $company_gateway->save();
+
+
+                dispatch(function () use ($company_gateway) {
+                    MultiDB::setDb($company_gateway->company->db);
+                    $company_gateway->driver()->updateFees();
+                })->afterResponse();
+
+                break;
+
+            default:
+                # code...
+                break;
+
+        }
 
         return $this->itemResponse($company_gateway);
     }
@@ -398,7 +510,7 @@ class CompanyGatewayController extends BaseController
      *
      * @param DestroyCompanyGatewayRequest $request
      * @param CompanyGateway $company_gateway
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -408,8 +520,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Deletes a CompanyGateway",
      *      description="Handles the deletion of an CompanyGateway by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -445,7 +556,7 @@ class CompanyGatewayController extends BaseController
      */
     public function destroy(DestroyCompanyGatewayRequest $request, CompanyGateway $company_gateway)
     {
-        $company_gateway->driver(new Client)
+        $company_gateway->driver(new Client())
                          ->disconnect();
 
         $company_gateway->delete();
@@ -456,7 +567,7 @@ class CompanyGatewayController extends BaseController
     /**
      * Perform bulk actions on the list view.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Post(
@@ -465,8 +576,7 @@ class CompanyGatewayController extends BaseController
      *      tags={"company_gateways"},
      *      summary="Performs bulk actions on an array of company_gateways",
      *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
      *      @OA\RequestBody(
@@ -504,20 +614,44 @@ class CompanyGatewayController extends BaseController
      *       ),
      *     )
      */
-    public function bulk()
+    public function bulk(BulkCompanyGatewayRequest $request)
     {
-        $action = request()->input('action');
+        $action = $request->input('action');
 
-        $ids = request()->input('ids');
+        $company_gateways = CompanyGateway::withTrashed()
+                                          ->whereIn('id', $request->ids)
+                                          ->company()
+                                          ->cursor()
+                                          ->each(function ($company_gateway, $key) use ($action) {
+                                              $this->company_repo->{$action}($company_gateway);
+                                          });
 
-        $company_gateways = CompanyGateway::withTrashed()->find($this->transformKeys($ids));
-
-        $company_gateways->each(function ($company_gateway, $key) use ($action) {
-            if (auth()->user()->can('edit', $company_gateway)) {
-                $this->company_repo->{$action}($company_gateway);
-            }
-        });
-
-        return $this->listResponse(CompanyGateway::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(CompanyGateway::withTrashed()->company()->whereIn('id', $request->ids));
     }
+
+    public function test(TestCompanyGatewayRequest $request, CompanyGateway $company_gateway)
+    {
+        $message = $company_gateway->driver()->auth();
+        return response()->json(['message' => $message], 200);
+
+    }
+
+    public function importCustomers(TestCompanyGatewayRequest $request, CompanyGateway $company_gateway)
+    {
+
+        //Throttle here
+        // if (Cache::has("throttle_polling:import_customers:{$company_gateway->company->company_key}:{$company_gateway->hashed_id}")) {
+        //     return response()->json(['message' => 'Please wait whilst your previous attempts complete.'], 200);
+        // }
+
+        dispatch(function () use ($company_gateway) {
+            MultiDB::setDb($company_gateway->company->db);
+            $company_gateway->driver()->importCustomers();
+        })->afterResponse();
+
+        Cache::put("throttle_polling:import_customers:{$company_gateway->company->company_key}:{$company_gateway->hashed_id}", true, 300);
+
+        return response()->json(['message' => ctrans('texts.import_started')], 200);
+    }
+
 }

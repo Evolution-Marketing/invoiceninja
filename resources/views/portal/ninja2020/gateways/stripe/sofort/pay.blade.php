@@ -15,6 +15,7 @@
     <meta name="country" content="{{ $country }}">
     <meta name="customer" content="{{ $customer }}">
     <meta name="pi-client-secret" content="{{ $pi_client_secret }}">
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -30,5 +31,5 @@
 
 @push('footer')
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-sofort.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-sofort.js')
 @endpush

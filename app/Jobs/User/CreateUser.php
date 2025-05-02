@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,13 +13,12 @@
 namespace App\Jobs\User;
 
 use App\DataMapper\CompanySettings;
-use App\DataMapper\DefaultSettings;
 use App\Events\User\UserWasCreated;
 use App\Models\User;
 use App\Utils\Ninja;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class CreateUser
 {
@@ -54,7 +54,7 @@ class CreateUser
      *
      * @return User|null
      */
-    public function handle() : ?User
+    public function handle(): ?User
     {
         $user = new User();
         $user->account_id = $this->account->id;
@@ -64,6 +64,7 @@ class CreateUser
         $user->fill($this->request);
         $user->email = $this->request['email']; //todo need to remove this in production
         $user->last_login = now();
+        $user->referral_code = Str::lower(Str::random(32));
         $user->ip = request()->ip();
 
         if (Ninja::isSelfHost()) {
@@ -78,13 +79,12 @@ class CreateUser
             'is_admin' => 1,
             'is_locked' => 0,
             'permissions' => '',
-            'notifications' => CompanySettings::notificationDefaults(),
-            //'settings' => DefaultSettings::userSettings(),
+            'notifications' => CompanySettings::notificationAdminDefaults(),
             'settings' => null,
         ]);
 
         if (! Ninja::isSelfHost()) {
-            event(new UserWasCreated($user, $user, $this->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
+            event(new UserWasCreated($user, $user, $this->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null), request()->hasHeader('X-REACT') ?? false));
         }
 
         return $user;

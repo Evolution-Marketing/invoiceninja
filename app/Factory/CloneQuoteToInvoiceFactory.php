@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,7 +17,7 @@ use App\Models\Quote;
 
 class CloneQuoteToInvoiceFactory
 {
-    public static function create(Quote $quote, $user_id) : ?Invoice
+    public static function create(Quote $quote, $user_id): ?Invoice
     {
         $invoice = new Invoice();
 
@@ -28,6 +29,7 @@ class CloneQuoteToInvoiceFactory
         unset($quote_array['invoice_id']);
         unset($quote_array['id']);
         unset($quote_array['invitations']);
+        unset($quote_array['user']);
 
         //preserve terms if they exist on Quotes
         //if(array_key_exists('terms', $quote_array) && strlen($quote_array['terms']) < 2)
@@ -38,7 +40,6 @@ class CloneQuoteToInvoiceFactory
         // unset($quote_array['public_notes']);
         unset($quote_array['footer']);
         unset($quote_array['design_id']);
-        unset($quote_array['user']);
 
         foreach ($quote_array as $key => $value) {
             $invoice->{$key} = $value;
@@ -58,6 +59,7 @@ class CloneQuoteToInvoiceFactory
         $invoice->reminder_last_sent = null;
         $invoice->last_sent_date = null;
         $invoice->last_viewed = null;
+
 
         return $invoice;
     }

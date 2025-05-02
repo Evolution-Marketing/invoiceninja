@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -27,7 +28,10 @@ class UpdateCompanyGatewayRequest extends Request
      */
     public function authorize()
     {
-        return auth()->user()->isAdmin();
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->isAdmin();
     }
 
     public function rules()
@@ -45,7 +49,7 @@ class UpdateCompanyGatewayRequest extends Request
 
         /*Force gateway properties */
         if (isset($input['config']) && is_object(json_decode($input['config'])) && array_key_exists('gateway_key', $input)) {
-            $gateway = Gateway::where('key', $input['gateway_key'])->first();
+            $gateway = Gateway::query()->where('key', $input['gateway_key'])->first();
             $default_gateway_fields = json_decode($gateway->fields);
 
             foreach (json_decode($input['config']) as $key => $value) {

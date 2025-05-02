@@ -5,6 +5,7 @@
     <form action="{{route('client.payments.credit_response')}}" method="post" id="credit-payment">
         @csrf
         <input type="hidden" name="payment_hash" value="{{$payment_hash}}">
+        <input type="hidden" name="hash" value="{{ request()->query('hash')}}">
     </form>
 
     <div class="container mx-auto">
@@ -36,7 +37,7 @@
                                 </dd>                                
                                 @endif
                                 <dt class="text-sm leading-5 font-medium text-gray-500">
-                                    {{ ctrans('texts.amount_due') }}
+                                    {{ ctrans('texts.balance') }}
                                 </dt>
                                 <dd class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
                                     {{ App\Utils\Number::formatMoney($total['amount_with_fee'], $client) }}

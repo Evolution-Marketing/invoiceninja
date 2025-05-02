@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,28 +23,12 @@ use Illuminate\Queue\SerializesModels;
  */
 class RecurringQuoteWasUpdated
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable;
+    use InteractsWithSockets;
+    use SerializesModels;
 
-    /**
-     * @var Invoice
-     */
-    public $recurring_quote;
 
-    public $company;
-
-    public $event_vars;
-
-    /**
-     * Create a new event instance.
-     *
-     * @param RecurringQuote $recurring_quote
-     * @param Company $company
-     * @param array $event_vars
-     */
-    public function __construct(RecurringQuote $recurring_quote, Company $company, array $event_vars)
+    public function __construct(public RecurringQuote $recurring_quote, public Company $company, public array $event_vars)
     {
-        $this->recurring_quote = $recurring_quote;
-        $this->company = $company;
-        $this->event_vars = $event_vars;
     }
 }

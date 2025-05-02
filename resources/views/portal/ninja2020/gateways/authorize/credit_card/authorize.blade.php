@@ -6,11 +6,10 @@
     <meta name="year-invalid" content="{{ ctrans('texts.year_invalid') }}">
     <meta name="month-invalid" content="{{ ctrans('texts.month_invalid') }}">
     <meta name="credit-card-invalid" content="{{ ctrans('texts.credit_card_invalid') }}">
+    <meta name="authnet-require-cvv" content="{{ $gateway->company_gateway->require_cvv }}">
+    <meta name="instant-payment" content="yes">
 
     <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
-    <script src="{{ asset('js/clients/payments/card-js.min.js') }}"></script>
-
-    <link href="{{ asset('css/card-js.min.css') }}" rel="stylesheet" type="text/css">
 @endsection
 
 @section('gateway_content')
@@ -50,5 +49,18 @@
         <script src="https://js.authorize.net/v1/Accept.js" charset="utf-8"></script>
     @endif
 
-    <script src="{{ asset('js/clients/payment_methods/authorize-authorize-card.js') }}"></script>
+    <script src="{{ asset('vendor/simple-card@0.0.5/simple-card.js') }}"></script> 
+
+    @vite('resources/js/clients/payment_methods/authorize-authorize-card.js')
 @endsection
+
+@push('footer')
+<script defer>
+    document.querySelector('#date').addEventListener('change', (e) => {
+        const [month, year] = e.target.value.replace(/\s/g, '').split('/');
+
+        document.getElementsByName('expiry-month')[0].value  = month;
+        document.getElementsByName('expiry-year')[0].value = `20${year}`;
+    });
+</script>
+@endpush

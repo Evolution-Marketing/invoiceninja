@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -35,7 +36,7 @@ class CreditsSumRule implements Rule
 
     private function checkCreditTotals()
     {
-        if (array_sum(array_column($this->input['credits'], 'amount')) > array_sum(array_column($this->input['invoices'], 'amount'))) {
+        if (array_sum(array_map('floatval', array_column($this->input['credits'], 'amount'))) > array_sum(array_map('floatval', array_column($this->input['invoices'], 'amount')))) {
             return false;
         }
 

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,7 +14,6 @@ namespace App\Transformers;
 
 use App\Models\Document;
 use App\Models\GroupSetting;
-use App\Transformers\DocumentTransformer;
 use App\Utils\Traits\MakesHash;
 use stdClass;
 
@@ -24,14 +24,14 @@ class GroupSettingTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         'documents',
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
     ];
 
     /**
@@ -43,7 +43,7 @@ class GroupSettingTransformer extends EntityTransformer
         return [
             'id' => $this->encodePrimaryKey($group_setting->id),
             'name' => (string) $group_setting->name ?: '',
-            'settings' => $group_setting->settings ?: new stdClass,
+            'settings' => $group_setting->settings ?: new stdClass(),
             'created_at' => (int) $group_setting->created_at,
             'updated_at' => (int) $group_setting->updated_at,
             'archived_at' => (int) $group_setting->deleted_at,

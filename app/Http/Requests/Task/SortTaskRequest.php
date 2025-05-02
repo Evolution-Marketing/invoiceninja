@@ -1,8 +1,9 @@
 <?php
+
 /**
  * Invoice Ninja (https://paymentninja.com).
  *
- * @link https://github.com/paymentninja/paymentninja source repository
+ * @link https://github.com/invoiceninja/invoiceninja source repository
  *
  * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://paymentninja.com)
  *
@@ -20,10 +21,9 @@ class SortTaskRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
         return true;
-
     }
 
     public function rules()

@@ -12,6 +12,7 @@
 namespace Tests\Feature;
 
 use App\DataMapper\FeesAndLimits;
+use App\Factory\CompanyGatewayFactory;
 use App\Models\CompanyGateway;
 use App\Models\GatewayType;
 use App\Utils\Traits\CompanyGatewayFeesAndLimitsSaver;
@@ -23,8 +24,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Models\CompanyGateway
+ * 
+ *  App\Models\CompanyGateway
  */
 class CompanyGatewayApiTest extends TestCase
 {
@@ -33,7 +34,7 @@ class CompanyGatewayApiTest extends TestCase
     use MockAccountData;
     use CompanyGatewayFeesAndLimitsSaver;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -45,6 +46,48 @@ class CompanyGatewayApiTest extends TestCase
 
         Model::reguard();
     }
+
+    public function testBulkActions()
+    {
+        $cg = CompanyGatewayFactory::create($this->company->id, $this->user->id);
+        $cg->gateway_key = 'd14dd26a37cecc30fdd65700bfb55b23';
+        $cg->save();
+
+        $data = [
+            'action' => 'archive',
+            'ids' => [$cg->hashed_id]
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-TOKEN' => $this->token,
+        ])->post('/api/v1/company_gateways/bulk', $data)
+          ->assertStatus(200);
+
+
+        $data = [
+            'ids' => [$cg->hashed_id],
+            'action' => 'restore'
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->post('/api/v1/company_gateways/bulk', $data)
+          ->assertStatus(200);
+
+        $data = [
+            'ids' => [$cg->hashed_id],
+            'action' => 'delete'
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->post('/api/v1/company_gateways/bulk', $data)
+          ->assertStatus(200);
+    }
+
+
 
     public function testCompanyGatewayEndPointsWithIncorrectFields()
     {
@@ -121,7 +164,7 @@ class CompanyGatewayApiTest extends TestCase
 
     public function testCompanyGatewayFeesAndLimitsSuccess()
     {
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
 
         $fee = (array) $fee;
 
@@ -181,7 +224,7 @@ class CompanyGatewayApiTest extends TestCase
 
     public function testCompanyGatewayFeesAndLimitsFails()
     {
-        $fee_and_limit['bank_transfer'] = new FeesAndLimits;
+        $fee_and_limit['bank_transfer'] = new FeesAndLimits();
 
         $fee_and_limit['bank_transfer']->adjust_fee_percent = 10;
 
@@ -207,7 +250,7 @@ class CompanyGatewayApiTest extends TestCase
             'max_limit' => 2,
         ];
 
-        $fal = (array) new FeesAndLimits;
+        $fal = (array) new FeesAndLimits();
 
         $new_arr = array_replace($fal, $arr);
 
@@ -218,7 +261,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeeAmountCalcuation()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 10;
         // $fee->fee_percent = 2;
         // $fee->fee_tax_name1 = 'GST';
@@ -251,7 +294,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentCalcuation()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         //$fee->fee_amount = 10;
         $fee->fee_percent = 2;
         // $fee->fee_tax_name1 = 'GST';
@@ -284,7 +327,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentAndAmountCalcuation()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 10;
         $fee->fee_percent = 2;
         // $fee->fee_tax_name1 = 'GST';
@@ -317,7 +360,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentAndAmountCalcuationOneHundredPercent()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 0;
         $fee->fee_percent = 100;
         $fee->adjust_fee_percent = false;
@@ -350,7 +393,7 @@ class CompanyGatewayApiTest extends TestCase
 
     public function testFeesAndLimitsFeePercentAndAmountCalcuationOneHundredPercentVariationOne()
     {
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 0;
         $fee->fee_percent = 10;
 
@@ -381,7 +424,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentAndAmountAndTaxCalcuation()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 10;
         // $fee->fee_percent = 2;
         $fee->fee_tax_name1 = 'GST';
@@ -414,7 +457,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentAndAmountAndTaxCalcuationInclusiveTaxes()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 10;
         // $fee->fee_percent = 2;
         $fee->fee_tax_name1 = 'GST';
@@ -447,7 +490,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentAndAmountAndDoubleTaxCalcuation()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 10;
         // $fee->fee_percent = 2;
         $fee->fee_tax_name1 = 'GST';
@@ -482,7 +525,7 @@ class CompanyGatewayApiTest extends TestCase
     public function testFeesAndLimitsFeePercentAndAmountAndDoubleTaxCalcuationWithFeeCap()
     {
         //{"1":{"min_limit":1,"max_limit":1000000,"fee_amount":10,"fee_percent":2,"fee_tax_name1":"","fee_tax_name2":"","fee_tax_name3":"","fee_tax_rate1":0,"fee_tax_rate2":0,"fee_tax_rate3":0,"fee_cap":10,"adjust_fee_percent":true}}
-        $fee = new FeesAndLimits;
+        $fee = new FeesAndLimits();
         $fee->fee_amount = 10;
         // $fee->fee_percent = 2;
         $fee->fee_tax_name1 = 'GST';
@@ -512,6 +555,6 @@ class CompanyGatewayApiTest extends TestCase
 
         $company_gateway = CompanyGateway::find($id);
 
-        $this->assertEquals(1.2, round($company_gateway->calcGatewayFee(10, GatewayType::CREDIT_CARD, true),1));
+        $this->assertEquals(1.2, round($company_gateway->calcGatewayFee(10, GatewayType::CREDIT_CARD, true), 1));
     }
 }

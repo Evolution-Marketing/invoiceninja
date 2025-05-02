@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -27,20 +28,11 @@ class DefaultSettings extends BaseSettings
     /**
      * @return stdClass
      */
-    public static function userSettings() : stdClass
+    public static function userSettings(): stdClass
     {
         return (object) [
             //    class_basename(User::class) => self::userSettingsObject(),
         ];
     }
 
-    /**
-     * @return stdClass
-     */
-    private static function userSettingsObject() : stdClass
-    {
-        return (object) [
-            //    'per_page' => self::$per_page,
-        ];
-    }
 }

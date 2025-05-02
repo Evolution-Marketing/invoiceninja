@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -72,7 +72,7 @@ class ImportCompleted extends Mailable
             'client_gateway_token_count' => $this->company->client_gateway_tokens()->count(),
             'tax_rate_count' => $this->company->tax_rates()->count(),
             'document_count' => $this->company->documents()->count(),
-
+            'url' => Ninja::isHosted() ? config('ninja.react_url') : config('ninja.app_url'),
         ]);
 
         return $this

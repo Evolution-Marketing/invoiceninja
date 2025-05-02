@@ -12,21 +12,20 @@
 namespace Tests\Integration;
 
 use App\Models\Invoice;
-use App\Utils\Traits\MakesReminders;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Carbon;
 use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class CheckRemindersTest extends TestCase
 {
     use MockAccountData;
     use DatabaseTransactions;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -55,7 +54,7 @@ class CheckRemindersTest extends TestCase
         $this->invoice->service()->markSent();
         $this->invoice->service()->setReminder($settings)->save();
 
-        $this->assertEquals(0, Carbon::now()->addDays(7)->diffInDays($this->invoice->next_send_date));
+        $this->assertEquals(0, intval(abs(Carbon::now()->addDays(7)->diffInDays($this->invoice->next_send_date))));
     }
 
     public function test_no_reminders_sent_to_paid_invoices()
@@ -101,7 +100,7 @@ class CheckRemindersTest extends TestCase
         $this->invoice->service()->markSent();
         $this->invoice->service()->setReminder($settings)->save();
 
-        $this->assertEquals(0, Carbon::parse($this->invoice->due_date)->subDays(29)->diffInDays($this->invoice->next_send_date));
+        $this->assertEquals(0, intval(abs(Carbon::parse($this->invoice->due_date)->subDays(29)->diffInDays($this->invoice->next_send_date))));
     }
 
     public function test_after_due_date_reminder()
@@ -121,7 +120,7 @@ class CheckRemindersTest extends TestCase
         $this->invoice->service()->markSent();
         $this->invoice->service()->setReminder($settings)->save();
 
-        $this->assertEquals(0, Carbon::parse($this->invoice->due_date)->addDays(1)->diffInDays($this->invoice->next_send_date));
+        $this->assertEquals(0, intval(abs(Carbon::parse($this->invoice->due_date)->addDays(1)->diffInDays($this->invoice->next_send_date))));
     }
 
     public function test_turning_off_reminders()

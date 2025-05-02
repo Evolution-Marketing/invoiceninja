@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -71,6 +72,8 @@ class ContactResetPasswordController extends Controller
     {
         if ($request->session()->has('company_key')) {
             MultiDB::findAndSetDbByCompanyKey($request->session()->get('company_key'));
+
+            /** @var \App\Models\Company $company **/
             $company = Company::where('company_key', $request->session()->get('company_key'))->first();
             $db = $company->db;
             $account = $company->account;
@@ -79,10 +82,12 @@ class ContactResetPasswordController extends Controller
 
             if ($account_key) {
                 MultiDB::findAndSetDbByAccountKey($account_key);
+                /** @var \App\Models\Account $account **/
                 $account = Account::where('key', $account_key)->first();
                 $db = $account->companies->first()->db;
                 $company = $account->companies->first();
             } else {
+                /** @var \App\Models\Account $account **/
                 $account = Account::first();
                 $db = $account->companies->first()->db;
                 $company = $account->companies->first();

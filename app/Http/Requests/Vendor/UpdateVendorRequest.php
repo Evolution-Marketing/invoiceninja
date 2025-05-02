@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -26,26 +27,45 @@ class UpdateVendorRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('edit', $this->vendor);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('edit', $this->vendor);
     }
 
     public function rules()
     {
-        /* Ensure we have a client name, and that all emails are unique*/
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-        $rules['country_id'] = 'integer|nullable';
+        $rules['country_id'] = 'integer';
 
         if ($this->number) {
-            $rules['number'] = Rule::unique('vendors')->where('company_id', auth()->user()->company()->id)->ignore($this->vendor->id);
+            $rules['number'] = Rule::unique('vendors')->where('company_id', $user->company()->id)->ignore($this->vendor->id);
         }
 
-        // if($this->id_number)
-        //     $rules['id_number'] = Rule::unique('vendors')->where('company_id', auth()->user()->company()->id)->ignore($this->vendor->id);
+        $rules['contacts'] = 'bail|array';
+        $rules['contacts.*.email'] = 'bail|nullable|distinct|sometimes|email';
+        $rules['contacts.*.password'] = [
+            'bail',
+            'nullable',
+            'sometimes',
+            'string',
+            'min:7',             // must be at least 10 characters in length
+            'regex:/[a-z]/',      // must contain at least one lowercase letter
+            'regex:/[A-Z]/',      // must contain at least one uppercase letter
+            'regex:/[0-9]/',      // must contain at least one digit
+            //'regex:/[@$!%*#?&.]/', // must contain a special character
+        ];
 
-        $rules['contacts.*.email'] = 'nullable|distinct';
-        // $rules['id_number'] = 'unique:vendors,id_number,'.$this->id.',id,company_id,'.auth()->user()->company()->id;
+        $rules['currency_id'] = 'bail|sometimes|exists:currencies,id';
+        $rules['file'] = 'bail|sometimes|array';
+        $rules['file.*'] = $this->fileValidation();
+        
+        $rules['language_id'] = 'bail|nullable|sometimes|exists:languages,id';
+        $rules['classification'] = 'bail|sometimes|nullable|in:individual,business,company,partnership,trust,charity,government,other';
 
         return $rules;
     }
@@ -63,8 +83,26 @@ class UpdateVendorRequest extends Request
     {
         $input = $this->all();
 
-        if (array_key_exists('assigned_user_id', $input) && is_string($input['assigned_user_id'])) {
-            $input['assigned_user_id'] = $this->decodePrimaryKey($input['assigned_user_id']);
+        if ($this->file('file') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('file', [$this->file('file')]);
+        }
+
+        if (isset($input['name'])) {
+            $input['name'] = strip_tags($input['name']);
+        }
+
+        if (isset($input['documents'])) {
+            unset($input['documents']);
+        }
+
+        if (array_key_exists('country_id', $input) && is_null($input['country_id'])) {
+            unset($input['country_id']);
+        } elseif (!$this->vendor->country_id) {
+
+            /** @var \App\Models\User $user */
+            $user = auth()->user();
+
+            $input['country_id'] = $user->company()->country()->id;
         }
 
         $input = $this->decodePrimaryKeys($input);

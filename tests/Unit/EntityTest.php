@@ -11,18 +11,30 @@
 
 namespace Tests\Unit;
 
-use App\Helpers\Invoice\InvoiceSum;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Tests\MockAccountData;
 use Tests\TestCase;
+use App\Models\Invoice;
+use Tests\MockAccountData;
+use App\Helpers\Invoice\InvoiceSum;
+use App\Models\Client;
+use App\Models\Credit;
+use App\Models\Document;
+use App\Models\Expense;
+use App\Models\Payment;
+use App\Models\Product;
+use App\Models\Project;
+use App\Models\PurchaseOrder;
+use App\Models\Quote;
+use App\Models\Task;
+use App\Models\Vendor;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 /**
- * @test
+ * 
  */
 class EntityTest extends TestCase
 {
     use MockAccountData;
-    use DatabaseTransactions;
+    // use DatabaseTransactions;
 
     public $invoice;
 
@@ -30,7 +42,7 @@ class EntityTest extends TestCase
 
     public $settings;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -54,5 +66,40 @@ class EntityTest extends TestCase
         $this->assertEquals('InvoiceInvitation', class_basename($entity_type));
 
         $this->assertEquals('InvoiceInvitation', class_basename($invitation));
+
+        $this->invoice->forceDelete();
+    }
+
+    public function testDocumentRelationExists()
+    {
+
+        $this->assertTrue(method_exists(Invoice::class, 'documents'));
+        $this->assertTrue(method_exists(Quote::class, 'documents'));
+        $this->assertTrue(method_exists(Credit::class, 'documents'));
+        $this->assertTrue(method_exists(PurchaseOrder::class, 'documents'));
+        $this->assertTrue(method_exists(Client::class, 'documents'));
+        $this->assertTrue(method_exists(Vendor::class, 'documents'));
+        $this->assertTrue(method_exists(Product::class, 'documents'));
+        $this->assertTrue(method_exists(Payment::class, 'documents'));
+        $this->assertTrue(method_exists(Expense::class, 'documents'));
+        $this->assertTrue(method_exists(Project::class, 'documents'));
+        $this->assertTrue(method_exists(Task::class, 'documents'));
+
+    }
+
+    protected function tearDown(): void
+    {
+        
+            
+        // $this->company->company_users->each(function ($company_user) {
+        //     $company_user->user->forceDelete();
+        //     $company_user->forceDelete();
+        // });
+
+        // // Clean up any resources or reset state if necessary
+        // $this->account->delete();
+
+
+        parent::tearDown();
     }
 }

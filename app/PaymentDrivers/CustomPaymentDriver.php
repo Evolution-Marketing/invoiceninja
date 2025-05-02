@@ -5,19 +5,22 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers;
 
+use App\Jobs\Util\SystemLogger;
 use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentHash;
+use App\Models\PaymentType;
+use App\Models\SystemLog;
 use App\Utils\HtmlEngine;
-use App\Utils\Number;
 use App\Utils\Traits\MakesHash;
 
 /**
@@ -43,6 +46,11 @@ class CustomPaymentDriver extends BaseDriver
         return $types;
     }
 
+    public function init()
+    {
+        return $this;
+    }
+
     public function setPaymentMethod($payment_method_id)
     {
         $this->payment_method = $payment_method_id;
@@ -50,14 +58,9 @@ class CustomPaymentDriver extends BaseDriver
         return $this;
     }
 
-    /**
-     * View for displaying custom content of the driver.
-     *
-     * @param array $data
-     * @return mixed
-     */
-    public function processPaymentView($data)
+    public function paymentData(array $data): array
     {
+
         $variables = [];
 
         if (count($this->payment_hash->invoices()) > 0) {
@@ -77,8 +80,33 @@ class CustomPaymentDriver extends BaseDriver
         $this->payment_hash->save();
 
         $data['gateway'] = $this;
+        $data['payment_hash'] = $this->payment_hash->hash;
+
+        return $data;
+
+    }
+
+    /**
+     * View for displaying custom content of the driver.
+     *
+     * @param array $data
+     * @return mixed
+     */
+    public function processPaymentView($data)
+    {
+        $data = $this->paymentData($data);
 
         return render('gateways.custom.payment', $data);
+    }
+
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.custom.pay_livewire';
+    }
+
+    public function processPaymentViewData(array $data): array
+    {
+        return $this->paymentData($data);
     }
 
     /**
@@ -88,6 +116,52 @@ class CustomPaymentDriver extends BaseDriver
      */
     public function processPaymentResponse($request)
     {
+        if ($request->has('gateway_response')) {
+            $this->client = auth()->guard('contact')->user()->client;
+
+            $state = [
+                'server_response' => json_decode($request->gateway_response),
+                'payment_hash' => $request->payment_hash,
+            ];
+
+            $payment_hash = PaymentHash::where('hash', $request->payment_hash)->first();
+
+            if ($payment_hash) {
+                $this->payment_hash = $payment_hash;
+
+                $payment_hash->data = array_merge((array) $payment_hash->data, $state);
+                $payment_hash->save();
+            }
+
+            $gateway_response = json_decode($request->gateway_response);
+
+            if ($gateway_response->status == 'COMPLETED') {
+                $this->logSuccessfulGatewayResponse(['response' => json_decode($request->gateway_response), 'data' => $payment_hash->data], SystemLog::TYPE_CUSTOM);
+
+                $data = [
+                    'payment_method' => '',
+                    'payment_type' => PaymentType::CREDIT_CARD_OTHER,
+                    'amount' => $payment_hash->amount_with_fee(),
+                    'transaction_reference' => $gateway_response?->purchase_units[0]?->payments?->captures[0]?->id,
+                    'gateway_type_id' => GatewayType::PAYPAL,
+                ];
+
+                $payment = $this->createPayment($data, Payment::STATUS_COMPLETED);
+
+                SystemLogger::dispatch(
+                    ['response' => $payment_hash->data->server_response, 'data' => $data],
+                    SystemLog::CATEGORY_GATEWAY_RESPONSE,
+                    SystemLog::EVENT_GATEWAY_SUCCESS,
+                    SystemLog::TYPE_STRIPE,
+                    $this->client,
+                    $this->client->company,
+                );
+
+                return redirect()->route('client.payments.show', ['payment' => $this->encodePrimaryKey($payment->id)]);
+            }
+        }
+
+
         return redirect()->route('client.invoices');
     }
 
@@ -100,5 +174,10 @@ class CustomPaymentDriver extends BaseDriver
     public function detach(ClientGatewayToken $token)
     {
         // Driver doesn't support this feature.
+    }
+
+    public function getClientRequiredFields(): array
+    {
+        return [];
     }
 }

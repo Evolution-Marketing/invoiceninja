@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,21 +13,23 @@
 namespace App\Jobs\Ninja;
 
 use App\Models\Backup;
+use App\Models\Company;
 use App\Models\Credit;
 use App\Models\Invoice;
 use App\Models\Quote;
-use App\Utils\Ninja;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 class SystemMaintenance implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     /**
      * Create a new job instance.
@@ -49,10 +52,6 @@ class SystemMaintenance implements ShouldQueue
 
         nlog('Starting System Maintenance');
 
-        if (Ninja::isHosted()) {
-            return;
-        }
-
         $delete_pdf_days = config('ninja.maintenance.delete_pdfs');
 
         nlog("Number of days to keep PDFs {$delete_pdf_days}");
@@ -73,7 +72,7 @@ class SystemMaintenance implements ShouldQueue
         }
 
         Invoice::with('invitations')
-                ->whereBetween('created_at', [now()->subYear(), now()->subDays($delete_pdf_days)])
+                ->whereBetween('created_at', [now()->subYear(), now()->subDays((int)$delete_pdf_days)])
                 ->withTrashed()
                 ->cursor()
                 ->each(function ($invoice) {
@@ -83,7 +82,7 @@ class SystemMaintenance implements ShouldQueue
                 });
 
         Quote::with('invitations')
-                ->whereBetween('created_at', [now()->subYear(), now()->subDays($delete_pdf_days)])
+                ->whereBetween('created_at', [now()->subYear(), now()->subDays((int)$delete_pdf_days)])
                 ->withTrashed()
                 ->cursor()
                 ->each(function ($quote) {
@@ -93,7 +92,7 @@ class SystemMaintenance implements ShouldQueue
                 });
 
         Credit::with('invitations')
-                ->whereBetween('created_at', [now()->subYear(), now()->subDays($delete_pdf_days)])
+                ->whereBetween('created_at', [now()->subYear(), now()->subDays((int)$delete_pdf_days)])
                 ->withTrashed()
                 ->cursor()
                 ->each(function ($credit) {
@@ -109,7 +108,7 @@ class SystemMaintenance implements ShouldQueue
             return;
         }
 
-        Backup::where('created_at', '<', now()->subDays($delete_backup_days))
+        Backup::where('created_at', '<', now()->subDays((int)$delete_backup_days))
                 ->cursor()
                 ->each(function ($backup) {
                     nlog("deleting {$backup->filename}");
@@ -121,4 +120,47 @@ class SystemMaintenance implements ShouldQueue
                     $backup->delete();
                 });
     }
+
+    //double check this is correct.
+
+    // private function cleanPdfs()
+    // {
+    //     $company_keys = Company::query()
+    //                             ->pluck('company_key')
+    //                             ->toArray();
+
+    //     $directories = Storage::disk(config('filesystems.default'))->directories();
+
+    //     $del_dirs = ['quotes','invoices','credits','recurring_invoices', 'e_invoice'];
+
+    //     collect($directories)->each(function ($parent_directory) use ($del_dirs, $company_keys) {
+
+    //         if (! in_array($parent_directory, $company_keys)) {
+    //             nlog("Deleting {$parent_directory}");
+
+    //             /* Ensure we are not deleting the root folder */
+    //             if (strlen($parent_directory) > 1) {
+    //                 nlog("Company No Longer Exists => deleting {$parent_directory}");
+    //                 Storage::disk(config('filesystems.default'))->deleteDirectory($parent_directory);
+    //                 return;
+    //             }
+
+    //         }
+
+    //         $sub_directories = Storage::allDirectories($parent_directory);
+
+    //         collect($sub_directories)->each(function ($sub_dir) use ($del_dirs) {
+    //             foreach($del_dirs as $del_dir) {
+    //                 if(stripos($sub_dir, $del_dir) !== false) {
+    //                     nlog("Deleting {$sub_dir} as it matches {$del_dir}");
+    //                     Storage::deleteDirectory($sub_dir);
+    //                 }
+    //             }
+
+    //         });
+
+    //     });
+
+    // }
+
 }

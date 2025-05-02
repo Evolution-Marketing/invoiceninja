@@ -1,128 +1,136 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Export\CSV;
 
-use App\Libraries\MultiDB;
-use App\Models\Client;
-use App\Models\Company;
-use App\Models\Credit;
-use App\Models\Document;
-use App\Models\Product;
-use App\Transformers\ProductTransformer;
 use App\Utils\Ninja;
-use Illuminate\Support\Facades\App;
 use League\Csv\Writer;
+use App\Models\Company;
+use App\Models\Product;
+use App\Libraries\MultiDB;
+use Illuminate\Support\Facades\App;
+use App\Export\Decorators\Decorator;
+use App\Transformers\ProductTransformer;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProductExport extends BaseExport
 {
-    private Company $company;
-
-    protected array $input;
-
     private $entity_transformer;
 
-    protected $date_key = 'created_at';
+    public string $date_key = 'created_at';
 
-    protected array $entity_keys = [
-        'project' => 'project_id',
-        'vendor' => 'vendor_id',
-        'custom_value1' => 'custom_value1',
-        'custom_value2' => 'custom_value2',
-        'custom_value3' => 'custom_value3',
-        'custom_value4' => 'custom_value4',
-        'product_key' => 'product_key',
-        'notes' => 'notes',
-        'cost' => 'cost',
-        'price' => 'price',
-        'quantity' => 'quantity',
-        'tax_rate1' => 'tax_rate1',
-        'tax_rate2' => 'tax_rate2',
-        'tax_rate3' => 'tax_rate3',
-        'tax_name1' => 'tax_name1',
-        'tax_name2' => 'tax_name2',
-        'tax_name3' => 'tax_name3',
-    ];
+    public Writer $csv;
 
-    private array $decorate_keys = [
-        'vendor',
-        'project',
-    ];
+    private Decorator $decorator;
 
     public function __construct(Company $company, array $input)
     {
         $this->company = $company;
         $this->input = $input;
         $this->entity_transformer = new ProductTransformer();
+        $this->decorator = new Decorator();
     }
 
-    public function run()
+    public function returnJson()
     {
+        $query = $this->init();
+
+        $headerdisplay = $this->buildHeader();
+
+        $header = collect($this->input['report_keys'])->map(function ($key, $value) use ($headerdisplay) {
+            return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
+        })->toArray();
+
+        $report = $query->cursor()
+                ->map(function ($resource) {
+
+                    /** @var \App\Models\Product $resource */
+                    $row = $this->buildRow($resource);
+                    return $this->processMetaData($row, $resource);
+                })->toArray();
+
+        return array_merge(['columns' => $header], $report);
+    }
+
+    private function init(): Builder
+    {
+
         MultiDB::setDb($this->company->db);
         App::forgetInstance('translator');
         App::setLocale($this->company->locale());
         $t = app('translator');
         $t->replace(Ninja::transformTranslations($this->company->settings));
 
+        if (count($this->input['report_keys']) == 0) {
+            $this->input['report_keys'] = array_values($this->product_report_keys);
+        }
+
+        $query = Product::query()
+                        ->withTrashed()
+                        ->where('company_id', $this->company->id);
+
+        if (!$this->input['include_deleted'] ?? false) { //@phpstan-ignore-line
+            $query->where('is_deleted', 0);
+        }
+
+        $query = $this->addDateRange($query, 'products');
+
+        if ($this->input['document_email_attachment'] ?? false) {
+            $this->queueDocuments($query);
+        }
+
+        return $query;
+
+    }
+
+    public function run()
+    {
+
+        $query = $this->init();
+
         //load the CSV document from a string
         $this->csv = Writer::createFromString();
-
-        if (count($this->input['report_keys']) == 0) {
-            $this->input['report_keys'] = array_values($this->entity_keys);
-        }
+        \League\Csv\CharsetConverter::addTo($this->csv, 'UTF-8', 'UTF-8');
 
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query = Product::query()->where('company_id', $this->company->id)->where('is_deleted', 0);
-
-        $query = $this->addDateRange($query);
-
         $query->cursor()
               ->each(function ($entity) {
+
+                  /** @var \App\Models\Product $entity */
                   $this->csv->insertOne($this->buildRow($entity));
               });
 
         return $this->csv->toString();
     }
 
-    private function buildRow(Product $product) :array
+    private function buildRow(Product $product): array
     {
         $transformed_entity = $this->entity_transformer->transform($product);
 
         $entity = [];
 
         foreach (array_values($this->input['report_keys']) as $key) {
-            $keyval = array_search($key, $this->entity_keys);
+            $keyval = array_search($key, $this->product_report_keys);
 
             if (array_key_exists($key, $transformed_entity)) {
                 $entity[$keyval] = $transformed_entity[$key];
             } else {
-                $entity[$keyval] = '';
+                $entity[$key] = $this->decorator->transform($key, $product);
             }
         }
 
-        return $this->decorateAdvancedFields($product, $entity);
+        return $this->convertFloats($entity);
     }
 
-    private function decorateAdvancedFields(Product $product, array $entity) :array
-    {
-        if (in_array('vendor_id', $this->input['report_keys'])) {
-            $entity['vendor'] = $product->vendor()->exists() ? $product->vendor->name : '';
-        }
-
-        if (array_key_exists('project_id', $this->input['report_keys'])) {
-            $entity['project'] = $product->project()->exists() ? $product->project->name : '';
-        }
-
-        return $entity;
-    }
 }

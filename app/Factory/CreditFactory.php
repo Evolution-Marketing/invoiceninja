@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,7 +17,7 @@ use App\Models\Credit;
 
 class CreditFactory
 {
-    public static function create(int $company_id, int $user_id, object $settings = null, Client $client = null) :Credit
+    public static function create(int $company_id, int $user_id): Credit
     {
         $credit = new Credit();
         $credit->status_id = Credit::STATUS_DRAFT;
@@ -49,7 +50,7 @@ class CreditFactory
         $credit->user_id = $user_id;
         $credit->company_id = $company_id;
         $credit->recurring_id = null;
-
+        $credit->exchange_rate = 1;
         return $credit;
     }
 }

@@ -1,33 +1,27 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\Account\CreateAccountRequest;
-use App\Jobs\Account\CreateAccount;
-use App\Models\Account;
-use App\Models\CompanyUser;
-use App\Transformers\CompanyUserTransformer;
 use App\Utils\Statics;
-use Illuminate\Foundation\Bus\DispatchesJobs;
 use Illuminate\Http\Response;
+use InvoiceNinja\EInvoice\Decoder\Schema;
 
 class StaticController extends BaseController
 {
     /**
      * Show the list of Invoices.
      *
-     * @param InvoiceFilters $filters  The filters
-     *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      * @OA\Get(
      *      path="/api/v1/statics",
@@ -36,8 +30,7 @@ class StaticController extends BaseController
      *      summary="Gets a list of statics",
      *      description="Lists all statics",
      *
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -61,8 +54,23 @@ class StaticController extends BaseController
      */
     public function __invoke()
     {
-        $response = Statics::company(auth()->user()->getCompany()->getLocale());
 
-        return response()->json($response, 200, ['Content-type'=> 'application/json; charset=utf-8'], JSON_PRETTY_PRINT);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $response_data = Statics::company($user->getLocale() ?? $user->company()->getLocale());
+
+        if (request()->has('einvoice')) {
+
+            $schema = new Schema();
+            $response_data['einvoice_schema'] = $schema('Peppol');
+
+        }
+
+        if (\App\Utils\Ninja::isSelfHost()) {
+            $response_data['license_key'] = config('ninja.license_key');
+        }
+
+        return response()->json($response_data, 200, ['Content-type' => 'application/json; charset=utf-8'], JSON_PRETTY_PRINT);
     }
 }

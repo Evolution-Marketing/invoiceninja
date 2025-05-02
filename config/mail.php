@@ -28,7 +28,7 @@ return [
     | sending an e-mail. You will specify which one you are using for your
     | mailers below. You are free to add additional mailers as required.
     |
-    | Supported: "smtp", "sendmail", "mailgun", "ses",
+    | Supported: "smtp", "sendmail", "mailgun", "brevo", "ses",
     |            "postmark", "log", "array", "failover"
     |
     */
@@ -43,6 +43,8 @@ return [
             'password' => env('MAIL_PASSWORD'),
             'timeout' => null,
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
+            'verify_peer' => env('MAIL_VERIFY_PEER', true),
+            'scheme' => env('MAIL_SCHEME', 'smtp'), // smtp or smtps
         ],
 
         'ses' => [
@@ -51,6 +53,10 @@ return [
 
         'mailgun' => [
             'transport' => 'mailgun',
+        ],
+
+        'brevo' => [
+            'transport' => 'brevo',
         ],
 
         'postmark' => [

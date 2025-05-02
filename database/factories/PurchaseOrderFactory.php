@@ -6,7 +6,7 @@
  *
  * @copyright Copyright (c) 2021. Invoice Ninja LLC (https://invoiceninja.com)
  *
- * @license https://www.elastic.co/licensing/elastic-license 
+ * @license https://www.elastic.co/licensing/elastic-license
  */
 namespace Database\Factories;
 
@@ -46,6 +46,7 @@ class PurchaseOrderFactory extends Factory
             'due_date' => $this->faker->date(),
             'line_items' => InvoiceItemFactory::generate(5),
             'terms' => $this->faker->text(500),
+            'uses_inclusive_taxes' => false,
         ];
     }
 }

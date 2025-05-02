@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,10 +17,12 @@ use App\Http\ViewComposers\PortalComposer;
 
 class ShowRecurringInvoiceRequest extends Request
 {
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->guard('contact')->user()->client->id == $this->recurring_invoice->client_id
-            && auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_RECURRING_INVOICES;
+        auth()->guard('contact')->user()->loadMissing(['company']);
+
+        return (int)auth()->guard('contact')->user()->client->id == $this->recurring_invoice->client_id
+            && (bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_RECURRING_INVOICES);
     }
 
     public function rules()

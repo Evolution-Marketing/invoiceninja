@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -37,7 +38,6 @@ class EmailSuccess extends GenericMixedMetric
      *
      * date("Y-m-d H:i:s")
      *
-     * @var DateTime
      */
     public $datetime;
 
@@ -61,7 +61,6 @@ class EmailSuccess extends GenericMixedMetric
      * The counter
      * set to 1.
      *
-     * @var string
      */
     public $int_metric1 = 1;
 
@@ -71,8 +70,16 @@ class EmailSuccess extends GenericMixedMetric
      */
     public $string_metric7 = '';
 
-    public function __construct($string_metric7)
+    /**
+     * Subject
+     * @var string
+     */
+    public $string_metric8 = '';
+
+    public function __construct($string_metric7 = '', $string_metric8 = '', string $string_metric9 = '')
     {
         $this->string_metric7 = $string_metric7;
+        $this->string_metric8 = $string_metric8;
+        $this->string_metric9 = $string_metric9;
     }
 }

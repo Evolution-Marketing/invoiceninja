@@ -1,39 +1,35 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
-use App\Events\ClientGatewayToken\ClientGatewayTokenWasCreated;
-use App\Events\ClientGatewayToken\ClientGatewayTokenWasUpdated;
 use App\Factory\ClientGatewayTokenFactory;
 use App\Filters\ClientGatewayTokenFilters;
 use App\Http\Requests\ClientGatewayToken\CreateClientGatewayTokenRequest;
 use App\Http\Requests\ClientGatewayToken\DestroyClientGatewayTokenRequest;
 use App\Http\Requests\ClientGatewayToken\EditClientGatewayTokenRequest;
+use App\Http\Requests\ClientGatewayToken\ListClientGatewayTokenRequest;
 use App\Http\Requests\ClientGatewayToken\ShowClientGatewayTokenRequest;
 use App\Http\Requests\ClientGatewayToken\StoreClientGatewayTokenRequest;
 use App\Http\Requests\ClientGatewayToken\UpdateClientGatewayTokenRequest;
-use App\Http\Requests\ClientGatewayToken\UploadClientGatewayTokenRequest;
 use App\Jobs\ClientGatewayToken\StoreClientGatewayToken;
 use App\Jobs\ClientGatewayToken\UpdateClientGatewayToken;
-use App\Models\Account;
 use App\Models\ClientGatewayToken;
 use App\Repositories\ClientGatewayTokenRepository;
 use App\Transformers\ClientGatewayTokenTransformer;
-use App\Utils\Ninja;
 use App\Utils\Traits\BulkOptions;
 use App\Utils\Traits\MakesHash;
 use App\Utils\Traits\SavesDocuments;
 use App\Utils\Traits\Uploadable;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -52,19 +48,14 @@ class ClientGatewayTokenController extends BaseController
     protected $entity_transformer = ClientGatewayTokenTransformer::class;
 
     /**
-     * @var ClientGatewayTokenRepository
-     */
-    protected $client_gateway_token_gateway_token_repo;
-
-    /**
      * ClientGatewayTokenController constructor.
-     * @param ClientGatewayTokenRepository $client_gateway_token_gateway_token_repo
+     * @param ClientGatewayTokenRepository $client_gateway_token_repo
      */
-    public function __construct(ClientGatewayTokenRepository $client_gateway_token_gateway_token_repo)
+    public function __construct(protected ClientGatewayTokenRepository $client_gateway_token_repo)
     {
         parent::__construct();
 
-        $this->client_gateway_token_repo = $client_gateway_token_gateway_token_repo;
+        $this->client_gateway_token_repo = $client_gateway_token_repo;
     }
 
     /**
@@ -74,10 +65,8 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Gets a list of client_gateway_tokens",
      *      description="Lists client_gateway_tokens, search and filters allow fine grained lists to be generated.
-
-    Query parameters can be added to performed more fine grained filtering of the client_gateway_tokens, these are handled by the ClientGatewayTokenFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     * Query parameters can be added to performed more fine grained filtering of the client_gateway_tokens, these are handled by the ClientGatewayTokenFilters class which defines the methods available",
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -100,12 +89,12 @@ class ClientGatewayTokenController extends BaseController
      *           @OA\JsonContent(ref="#/components/schemas/Error"),
      *       ),
      *     )
-     * @param ClientGatewayTokenFilters $filters
-     * @return Response|mixed
+     * @param ListClientGatewayTokenRequest $request
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
-    public function index(Request $request)
+    public function index(ListClientGatewayTokenRequest $request)
     {
-        $client_gateway_token_gateway_tokens = ClientGatewayToken::scope();
+        $client_gateway_token_gateway_tokens = ClientGatewayToken::query()->company();
 
         return $this->listResponse($client_gateway_token_gateway_tokens);
     }
@@ -115,7 +104,7 @@ class ClientGatewayTokenController extends BaseController
      *
      * @param ShowClientGatewayTokenRequest $request
      * @param ClientGatewayToken $client_gateway_token
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -124,8 +113,7 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Shows a client",
      *      description="Displays a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -170,7 +158,7 @@ class ClientGatewayTokenController extends BaseController
      *
      * @param EditClientGatewayTokenRequest $request
      * @param ClientGatewayToken $client_gateway_token
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -179,8 +167,7 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Shows a client for editting",
      *      description="Displays a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -225,7 +212,7 @@ class ClientGatewayTokenController extends BaseController
      *
      * @param UpdateClientGatewayTokenRequest $request
      * @param ClientGatewayToken $client_gateway_token
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -235,8 +222,7 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Updates a client",
      *      description="Handles the updating of a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -282,7 +268,7 @@ class ClientGatewayTokenController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateClientGatewayTokenRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -292,8 +278,7 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Gets a new blank client object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -319,7 +304,10 @@ class ClientGatewayTokenController extends BaseController
      */
     public function create(CreateClientGatewayTokenRequest $request)
     {
-        $client_gateway_token = ClientGatewayTokenFactory::create(auth()->user()->company()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $client_gateway_token = ClientGatewayTokenFactory::create($user->company()->id);
 
         $client_gateway_token = $this->client_gateway_token_repo->save($request->all(), $client_gateway_token);
 
@@ -330,7 +318,7 @@ class ClientGatewayTokenController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreClientGatewayTokenRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -340,8 +328,7 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Adds a client",
      *      description="Adds an client to a company",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -367,7 +354,11 @@ class ClientGatewayTokenController extends BaseController
      */
     public function store(StoreClientGatewayTokenRequest $request)
     {
-        $client_gateway_token = ClientGatewayTokenFactory::create(auth()->user()->company()->id);
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $client_gateway_token = ClientGatewayTokenFactory::create($user->company()->id);
 
         $client_gateway_token = $this->client_gateway_token_repo->save($request->all(), $client_gateway_token);
 
@@ -379,7 +370,7 @@ class ClientGatewayTokenController extends BaseController
      *
      * @param DestroyClientGatewayTokenRequest $request
      * @param ClientGatewayToken $client_gateway_token
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -389,8 +380,7 @@ class ClientGatewayTokenController extends BaseController
      *      tags={"client_gateway_tokens"},
      *      summary="Deletes a client",
      *      description="Handles the deletion of a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -427,6 +417,25 @@ class ClientGatewayTokenController extends BaseController
     public function destroy(DestroyClientGatewayTokenRequest $request, ClientGatewayToken $client_gateway_token)
     {
         $this->client_gateway_token_repo->delete($client_gateway_token);
+
+        if ($client_gateway_token->is_default) {
+            $cgt = ClientGatewayToken::where('client_id', $client_gateway_token->client_id)
+                                    ->where('company_gateway_id', $client_gateway_token->company_gateway_id)
+                                    ->first();
+
+            if ($cgt) {
+                $cgt->is_default = true;
+                $cgt->save();
+            }
+
+        }
+
+        return $this->itemResponse($client_gateway_token->fresh());
+    }
+
+    public function setAsDefault(UpdateClientGatewayTokenRequest $request, ClientGatewayToken $client_gateway_token)
+    {
+        $client_gateway_token = $this->client_gateway_token_repo->setDefault($client_gateway_token);
 
         return $this->itemResponse($client_gateway_token->fresh());
     }

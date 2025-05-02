@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,13 +19,14 @@ use App\Models\GatewayType;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\Common\MethodInterface;
 use App\PaymentDrivers\MolliePaymentDriver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
-class Bancontact implements MethodInterface
+class Bancontact implements MethodInterface, LivewireMethodInterface
 {
     protected MolliePaymentDriver $mollie;
 
@@ -40,7 +41,7 @@ class Bancontact implements MethodInterface
      * Show the authorization page for Bancontact.
      *
      * @param array $data
-     * @return View
+     * @return \Illuminate\View\View
      */
     public function authorizeView(array $data): View
     {
@@ -51,7 +52,7 @@ class Bancontact implements MethodInterface
      * Handle the authorization for Bancontact.
      *
      * @param Request $request
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function authorizeResponse(Request $request): RedirectResponse
     {
@@ -62,7 +63,7 @@ class Bancontact implements MethodInterface
      * Show the payment page for Bancontact.
      *
      * @param array $data
-     * @return Redirector|RedirectResponse
+     * @return \Illuminate\Http\RedirectResponseor|RedirectResponse
      */
     public function paymentView(array $data)
     {
@@ -171,7 +172,7 @@ class Bancontact implements MethodInterface
      *
      * @param string $status
      * @param ResourcesPayment $payment
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function processSuccessfulPayment(\Mollie\Api\Resources\Payment $payment, string $status = 'paid'): RedirectResponse
     {
@@ -203,10 +204,30 @@ class Bancontact implements MethodInterface
      * Handle 'open' payment status for Bancontact.
      *
      * @param ResourcesPayment $payment
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function processOpenPayment(\Mollie\Api\Resources\Payment $payment): RedirectResponse
     {
         return $this->processSuccessfulPayment($payment, 'open');
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        // Doesn't support, it's offsite payment method.
+
+        return '';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $this->paymentView($data);
+
+        return $data;
     }
 }

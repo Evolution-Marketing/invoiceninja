@@ -1,37 +1,30 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Console\Commands;
 
-use App\DataMapper\CompanySettings;
 use App\Exceptions\MigrationValidatorFailed;
 use App\Exceptions\NonExistingMigrationFile;
 use App\Exceptions\ProcessingMigrationArchiveFailed;
 use App\Exceptions\ResourceDependencyMissing;
 use App\Exceptions\ResourceNotAvailableForMigration;
 use App\Jobs\Util\Import;
-use App\Jobs\Util\StartMigration;
 use App\Libraries\MultiDB;
 use App\Mail\MigrationFailed;
-use App\Models\Account;
-use App\Models\Company;
-use App\Models\CompanyToken;
 use App\Models\User;
 use App\Utils\Traits\AppSetup;
 use App\Utils\Traits\MakesHash;
 use DirectoryIterator;
-use Faker\Factory;
-use Faker\Generator;
 use Illuminate\Console\Command;
-use Illuminate\Support\Str;
 use ZipArchive;
 
 class HostedMigrations extends Command
@@ -70,7 +63,6 @@ class HostedMigrations extends Command
      */
     public function handle()
     {
-        $this->buildCache();
 
         if (! MultiDB::userFindAndSetDb($this->option('email'))) {
             $this->info('Could not find a user with that email address');
@@ -113,7 +105,7 @@ class HostedMigrations extends Command
 
                     Import::dispatch($import_file, $user->companies()->first(), $user);
                 } catch (NonExistingMigrationFile | ProcessingMigrationArchiveFailed | ResourceNotAvailableForMigration | MigrationValidatorFailed | ResourceDependencyMissing $e) {
-                    \Mail::to($this->user)->send(new MigrationFailed($e, $e->getMessage()));
+                    \Mail::to($user)->send(new MigrationFailed($e, $company));
 
                     if (app()->environment() !== 'production') {
                         info($e->getMessage());

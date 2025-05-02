@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -25,7 +26,7 @@ class PurchaseOrderRepository extends BaseRepository
     {
     }
 
-    public function save(array $data, PurchaseOrder $purchase_order) : ?PurchaseOrder
+    public function save(array $data, PurchaseOrder $purchase_order): ?PurchaseOrder
     {
         $purchase_order->fill($data);
 
@@ -36,7 +37,7 @@ class PurchaseOrderRepository extends BaseRepository
 
             /* Get array of Keys which have been removed from the invitations array and soft delete each invitation */
             $purchase_order->invitations->pluck('key')->diff($invitations->pluck('key'))->each(function ($invitation) {
-                $invitation = PurchaseOrderInvitation::where('key', $invitation)->first();
+                $invitation = PurchaseOrderInvitation::query()->where('key', $invitation)->first();
 
                 if ($invitation) {
                     $invitation->delete();
@@ -44,7 +45,6 @@ class PurchaseOrderRepository extends BaseRepository
             });
 
             foreach ($data['invitations'] as $invitation) {
-
                 //if no invitations are present - create one.
                 if (! $this->getInvitation($invitation)) {
                     if (isset($invitation['id'])) {
@@ -67,7 +67,7 @@ class PurchaseOrderRepository extends BaseRepository
                             $new_invitation->purchase_order_id = $purchase_order->id;
                             $new_invitation->vendor_contact_id = $contact->id;
                             $new_invitation->key = $this->createDbHash($purchase_order->company->db);
-                            $new_invitation->save();
+                            $new_invitation->saveQuietly();
                         }
                     }
                 }
@@ -85,9 +85,9 @@ class PurchaseOrderRepository extends BaseRepository
         return $purchase_order;
     }
 
-    public function getInvitationByKey($key) :?PurchaseOrderInvitation
+    public function getInvitationByKey($key): ?PurchaseOrderInvitation
     {
-        return PurchaseOrderInvitation::where('key', $key)->first();
+        return PurchaseOrderInvitation::query()->where('key', $key)->first();
     }
 
     public function getInvitation($invitation, $resource = null)
@@ -96,7 +96,7 @@ class PurchaseOrderRepository extends BaseRepository
             return false;
         }
 
-        $invitation = PurchaseOrderInvitation::where('key', $invitation['key'])->first();
+        $invitation = PurchaseOrderInvitation::query()->where('key', $invitation['key'])->first();
 
         return $invitation;
     }

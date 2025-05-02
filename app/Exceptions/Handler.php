@@ -1,65 +1,92 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Exceptions;
 
-use App\Exceptions\FilePermissionsFailure;
-use App\Exceptions\InternalPDFFailure;
-use App\Exceptions\PhantomPDFFailure;
-use App\Exceptions\StripeConnectFailure;
+use Throwable;
+use PDOException;
 use App\Utils\Ninja;
-use Exception;
-use Illuminate\Auth\Access\AuthorizationException;
+use Sentry\State\Scope;
+use Illuminate\Support\Arr;
+use Illuminate\Http\Request;
+use InvalidArgumentException;
+use Sentry\Laravel\Integration;
+use Illuminate\Support\Facades\Schema;
+use Aws\Exception\CredentialsException;
+use Illuminate\Database\QueryException;
+use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Database\Eloquent\ModelNotFoundException as ModelNotFoundException;
+use League\Flysystem\UnableToCreateDirectory;
+use Illuminate\Session\TokenMismatchException;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Encryption\MissingAppKeyException;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Queue\MaxAttemptsExceededException;
+use Elastic\Transport\Exception\NoNodeAvailableException;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Symfony\Component\Process\Exception\RuntimeException;
 use Illuminate\Database\Eloquent\RelationNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
-use Illuminate\Http\Exceptions\ThrottleRequestsException;
-use Illuminate\Http\Request;
-use Illuminate\Http\Response;
-use Illuminate\Queue\MaxAttemptsExceededException;
-use Illuminate\Session\TokenMismatchException;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\ValidationException;
-use PDOException;
-use Sentry\State\Scope;
-use Swift_TransportException;
 use Symfony\Component\Console\Exception\CommandNotFoundException;
-use Symfony\Component\Debug\Exception\FatalThrowableError;
-use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
-use Throwable;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
+use Illuminate\Database\Eloquent\ModelNotFoundException as ModelNotFoundException;
 
 class Handler extends ExceptionHandler
 {
     /**
      * A list of the exception types that are not reported.
      *
-     * @var array
+     * @var array<int, class-string<Throwable>>
      */
     protected $dontReport = [
-        PDOException::class,
-        //Swift_TransportException::class,
+        // PDOException::class,
+        MaxAttemptsExceededException::class,
+        CommandNotFoundException::class,
+        ValidationException::class,
+        // ModelNotFoundException::class,
+        NotFoundHttpException::class,
+        RelationNotFoundException::class,
+        NoNodeAvailableException::class,
+    ];
+
+    protected $selfHostDontReport = [
+        FilePermissionsFailure::class,
         MaxAttemptsExceededException::class,
         CommandNotFoundException::class,
         ValidationException::class,
         ModelNotFoundException::class,
         NotFoundHttpException::class,
+        UnableToCreateDirectory::class,
+        RuntimeException::class,
+        InvalidArgumentException::class,
+        CredentialsException::class,
+        RelationNotFoundException::class,
+        QueryException::class,
+    ];
+
+    protected $hostedDontReport = [
+        MaxAttemptsExceededException::class,
+        CommandNotFoundException::class,
+        ValidationException::class,
+        ModelNotFoundException::class,
+        NotFoundHttpException::class,
+        RelationNotFoundException::class,
     ];
 
     /**
      * A list of the inputs that are never flashed for validation exceptions.
      *
-     * @var array
+     * @var array<1, string>
      */
     protected $dontFlash = [
         'current_password',
@@ -76,20 +103,16 @@ class Handler extends ExceptionHandler
      */
     public function report(Throwable $exception)
     {
-        if (! Schema::hasTable('accounts')) {
-            info('account table not found');
+        if (Ninja::isHosted()) {
 
-            return;
-        }
-
-        if (Ninja::isHosted() && ! ($exception instanceof ValidationException)) {
-            app('sentry')->configureScope(function (Scope $scope): void {
+            Integration::configureScope(function (Scope $scope): void {
                 $name = 'hosted@invoiceninja.com';
 
-                if (auth()->guard('contact') && auth()->guard('contact')->user()) {
+                if (auth()->guard('contact') && auth()->guard('contact')->user()) { // @phpstan-ignore-line
                     $name = 'Contact = '.auth()->guard('contact')->user()->email;
                     $key = auth()->guard('contact')->user()->company->account->key;
-                } elseif (auth()->guard('user') && auth()->guard('user')->user()) {
+                } elseif (auth()->guard('user') && auth()->guard('user')->user()) { // @phpstan-ignore-line
+
                     $name = 'Admin = '.auth()->guard('user')->user()->email;
                     $key = auth()->user()->account->key;
                 } else {
@@ -103,16 +126,19 @@ class Handler extends ExceptionHandler
                 ]);
             });
 
-            app('sentry')->captureException($exception);
-        } elseif (app()->bound('sentry') && $this->shouldReport($exception)) {
-            app('sentry')->configureScope(function (Scope $scope): void {
-                if (auth()->guard('contact') && auth()->guard('contact')->user() && auth()->guard('contact')->user()->company->account->report_errors) {
+            if ($this->validException($exception) && $this->sentryShouldReport($exception)) {
+                Integration::captureUnhandledException($exception);
+            }
+        } elseif (app()->bound('sentry')) {
+            Integration::configureScope(function (Scope $scope): void {
+                if (auth()->guard('contact') && auth()->guard('contact')->user() && auth()->guard('contact')->user()->company->account->report_errors) {// @phpstan-ignore-line
+
                     $scope->setUser([
                         'id'    => auth()->guard('contact')->user()->company->account->key,
                         'email' => 'anonymous@example.com',
                         'name'  => 'Anonymous User',
                     ]);
-                } elseif (auth()->guard('user') && auth()->guard('user')->user() && auth()->user()->company() && auth()->user()->company()->account->report_errors) {
+                } elseif (auth()->guard('user') && auth()->guard('user')->user() && auth()->user()->companyIsSet() && auth()->user()->company()->account->report_errors) {// @phpstan-ignore-line
                     $scope->setUser([
                         'id'    => auth()->user()->account->key,
                         'email' => 'anonymous@example.com',
@@ -121,12 +147,16 @@ class Handler extends ExceptionHandler
                 }
             });
 
-            if ($this->validException($exception)) {
-                app('sentry')->captureException($exception);
+            if ($this->validException($exception) && $this->sentryShouldReport($exception)) {
+                Integration::captureUnhandledException($exception);
             }
         }
 
         parent::report($exception);
+
+        if (Ninja::isSelfHost() && $exception instanceof MissingAppKeyException) {
+            info('To setup the app run: cp .env.example .env');
+        }
     }
 
     private function validException($exception)
@@ -158,18 +188,35 @@ class Handler extends ExceptionHandler
         return true;
     }
 
+
+    /**
+     * Determine if the exception is in the "do not report" list.
+     *
+     * @param  \Throwable  $e
+     * @return bool
+     */
+    protected function sentryShouldReport(Throwable $e)
+    {
+        if (Ninja::isHosted()) {
+            $dontReport = array_merge($this->hostedDontReport, $this->internalDontReport);
+        } else {
+            $dontReport = array_merge($this->selfHostDontReport, $this->internalDontReport);
+        }
+
+        return is_null(Arr::first($dontReport, fn ($type) => $e instanceof $type));
+    }
+
     /**
      * Render an exception into an HTTP response.
      *
      * @param Request $request
      * @param Throwable $exception
-     * @return Response
      * @throws Throwable
      */
     public function render($request, Throwable $exception)
     {
         if ($exception instanceof ModelNotFoundException && $request->expectsJson()) {
-            return response()->json(['message'=>$exception->getMessage()], 400);
+            return response()->json(['message' => $exception->getMessage()], 400);
         } elseif ($exception instanceof InternalPDFFailure && $request->expectsJson()) {
             return response()->json(['message' => $exception->getMessage()], 500);
         } elseif ($exception instanceof PhantomPDFFailure && $request->expectsJson()) {
@@ -177,11 +224,11 @@ class Handler extends ExceptionHandler
         } elseif ($exception instanceof FilePermissionsFailure) {
             return response()->json(['message' => $exception->getMessage()], 500);
         } elseif ($exception instanceof ThrottleRequestsException && $request->expectsJson()) {
-            return response()->json(['message'=>'Too many requests'], 429);
-        } elseif ($exception instanceof FatalThrowableError && $request->expectsJson()) {
-            return response()->json(['message'=>'Fatal error'], 500);
-        } elseif ($exception instanceof AuthorizationException) {
-            return response()->json(['message'=>'You are not authorized to view or perform this action'], 401);
+            return response()->json(['message' => 'Too many requests'], 429);
+            // } elseif ($exception instanceof FatalThrowableError && $request->expectsJson()) {
+            //     return response()->json(['message'=>'Fatal error'], 500); //@deprecated
+        } elseif ($exception instanceof AuthorizationException && $request->expectsJson()) {
+            return response()->json(['message' => $exception->getMessage()], 401);
         } elseif ($exception instanceof TokenMismatchException) {
             return redirect()
                     ->back()
@@ -190,14 +237,13 @@ class Handler extends ExceptionHandler
                         'message' => ctrans('texts.token_expired'),
                         'message-type' => 'danger', ]);
         } elseif ($exception instanceof NotFoundHttpException && $request->expectsJson()) {
-            return response()->json(['message'=>'Route does not exist'], 404);
+            return response()->json(['message' => 'Route does not exist'], 404);
         } elseif ($exception instanceof MethodNotAllowedHttpException && $request->expectsJson()) {
-            return response()->json(['message'=>'Method not supported for this route'], 404);
+            return response()->json(['message' => 'Method not supported for this route'], 404);
         } elseif ($exception instanceof ValidationException && $request->expectsJson()) {
-            // nlog($exception->validator->getMessageBag());
             return response()->json(['message' => 'The given data was invalid.', 'errors' => $exception->validator->getMessageBag()], 422);
         } elseif ($exception instanceof RelationNotFoundException && $request->expectsJson()) {
-            return response()->json(['message' => $exception->getMessage()], 400);
+            return response()->json(['message' => "Relation `{$exception->relation}` is not a valid include."], 400);
         } elseif ($exception instanceof GenericPaymentDriverFailure && $request->expectsJson()) {
             return response()->json(['message' => $exception->getMessage()], 400);
         } elseif ($exception instanceof GenericPaymentDriverFailure) {
@@ -218,7 +264,7 @@ class Handler extends ExceptionHandler
         $guard = Arr::get($exception->guards(), 0);
 
         switch ($guard) {
-           case 'contact':
+            case 'contact':
                 $login = 'client.login';
                 break;
             case 'user':
@@ -226,6 +272,9 @@ class Handler extends ExceptionHandler
                 break;
             case 'vendor':
                 $login = 'vendor.catchall';
+                break;
+            case 'ronin':
+                $login = 'ronin.login';
                 break;
             default:
                 $login = 'default';

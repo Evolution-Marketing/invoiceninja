@@ -1,28 +1,26 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Document;
 
-use App\Jobs\Entity\CreateEntityPdf;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
 use App\Jobs\Util\UnlinkFile;
 use App\Libraries\MultiDB;
 use App\Mail\DownloadDocuments;
-use App\Mail\DownloadInvoices;
 use App\Models\Company;
 use App\Models\Document;
 use App\Models\User;
 use App\Utils\Ninja;
-use App\Utils\TempFile;
 use App\Utils\Traits\MakesDates;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,13 +29,15 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use ZipArchive;
 
 class ZipDocuments implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, MakesDates;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use MakesDates;
 
     public $document_ids;
 
@@ -50,9 +50,9 @@ class ZipDocuments implements ShouldQueue
     public $tries = 1;
 
     /**
-     * @param $invoices
+     * @param array $document_ids
      * @param Company $company
-     * @param $email
+     * @param User $user
      * @deprecated confirm to be deleted
      * Create a new job instance.
      */
@@ -71,9 +71,6 @@ class ZipDocuments implements ShouldQueue
      * Execute the job.
      *
      * @return void
-     * @throws \ZipStream\Exception\FileNotFoundException
-     * @throws \ZipStream\Exception\FileNotReadableException
-     * @throws \ZipStream\Exception\OverflowException
      */
     public function handle()
     {
@@ -90,7 +87,7 @@ class ZipDocuments implements ShouldQueue
         $path = $this->company->file_path();
 
         try {
-            $documents = Document::whereIn('id', $this->document_ids)->get();
+            $documents = Document::query()->whereIn('id', $this->document_ids)->get();
 
             foreach ($documents as $document) {
                 $zipFile->addFromString($this->buildFileName($document), $document->getFile());
@@ -98,7 +95,7 @@ class ZipDocuments implements ShouldQueue
 
             Storage::put($path.$file_name, $zipFile->outputAsString());
 
-            $nmo = new NinjaMailerObject;
+            $nmo = new NinjaMailerObject();
             $nmo->mailable = new DownloadDocuments(Storage::url($path.$file_name), $this->company);
             $nmo->to_user = $this->user;
             $nmo->settings = $this->settings;
@@ -114,7 +111,7 @@ class ZipDocuments implements ShouldQueue
         }
     }
 
-    private function buildFileName($document) :string
+    private function buildFileName($document): string
     {
         $filename = $document->name;
 
@@ -126,6 +123,12 @@ class ZipDocuments implements ShouldQueue
             $number = '_'.$document->documentable->number;
         }
 
-        return "{$date}_{$document->documentable->translate_entity()}{$number}_{$filename}";
+        $entity = ctrans('texts.document');
+
+        if (isset($document->documentable)) {
+            $entity = $document->documentable->translate_entity();
+        }
+
+        return "{$date}_{$entity}{$number}_{$filename}";
     }
 }

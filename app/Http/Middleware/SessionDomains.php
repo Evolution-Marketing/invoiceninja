@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,7 +15,6 @@ namespace App\Http\Middleware;
 use App\Utils\Ninja;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cookie;
 
 class SessionDomains
 {
@@ -33,12 +33,12 @@ class SessionDomains
 
         $domain_name = $request->getHost();
 
-        if (strpos($domain_name, 'invoicing.co') !== false) {
-            // config(['session.domain' => '.invoicing.co']);
+        if (strpos($domain_name, config('ninja.app_domain')) !== false) {
         } else {
             config(['session.domain' => $domain_name]);
         }
 
         return $next($request);
+
     }
 }

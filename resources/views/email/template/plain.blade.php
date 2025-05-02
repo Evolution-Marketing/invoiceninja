@@ -20,6 +20,21 @@
     </tr>
 @endif
 
+@isset($links)
+
+    @if(count($links) >=1)
+    <p><strong>{{ ctrans('texts.attachments') }}</strong></p>
+    @endif
+
+    @foreach($links as $link)
+        <tr>
+            <td>
+                <p> {!! $link ?? '' !!}</p>
+            </td>
+        </tr>
+    @endforeach
+@endisset
+
 @isset($whitelabel)
     @if(!$whitelabel)
         <p>
@@ -29,6 +44,7 @@
         </p>
     @endif
 @endisset
-@if(isset($unsubscribe_link))
-<p><a href="{{$unsubscribe_link}}">{{ ctrans('texts.unsubscribe') }}</a></p>
+
+@if(isset($email_preferences) && $email_preferences)
+<p><a href="{!! $email_preferences !!}">{{ ctrans('texts.email_preferences') }}</a></p>
 @endif

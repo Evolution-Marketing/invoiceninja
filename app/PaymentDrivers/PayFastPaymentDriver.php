@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -40,7 +41,7 @@ class PayFastPaymentDriver extends BaseDriver
         GatewayType::CREDIT_CARD => CreditCard::class,
     ];
 
-    const SYSTEM_LOG_TYPE = SystemLog::TYPE_PAYFAST;
+    public const SYSTEM_LOG_TYPE = SystemLog::TYPE_PAYFAST;
 
     //developer resources
     //https://sandbox.payfast.co.za/
@@ -68,18 +69,18 @@ class PayFastPaymentDriver extends BaseDriver
 
     public function init()
     {
-        try {
-            $this->payfast = new \PayFast\PayFastPayment(
-                [
-                    'merchantId' => $this->company_gateway->getConfigField('merchantId'),
-                    'merchantKey' => $this->company_gateway->getConfigField('merchantKey'),
-                    'passPhrase' => $this->company_gateway->getConfigField('passphrase'),
-                    'testMode' => $this->company_gateway->getConfigField('testMode'),
-                ]
-            );
-        } catch (\Exception $e) {
-            nlog('##PAYFAST## There was an exception: '.$e->getMessage());
-        }
+        // try {
+        //     $this->payfast = new \Payfast\PayFastPayment(
+        //         [
+        //             'merchantId' => $this->company_gateway->getConfigField('merchantId'),
+        //             'merchantKey' => $this->company_gateway->getConfigField('merchantKey'),
+        //             'passPhrase' => $this->company_gateway->getConfigField('passphrase'),
+        //             'testMode' => $this->company_gateway->getConfigField('testMode'),
+        //         ]
+        //     );
+        // } catch (\Exception $e) {
+        //     nlog('##PAYFAST## There was an exception: '.$e->getMessage());
+        // }
 
         return $this;
     }
@@ -211,7 +212,6 @@ class PayFastPaymentDriver extends BaseDriver
 
                     return response()->json([], 200);
 
-                    break;
 
                 default:
 
@@ -223,7 +223,6 @@ class PayFastPaymentDriver extends BaseDriver
 
                     return response()->json([], 200);
 
-                    break;
             }
         }
 

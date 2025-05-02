@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,18 +13,11 @@
 namespace App\Notifications\Ninja;
 
 use App\Models\Company;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Messages\SlackMessage;
 use Illuminate\Notifications\Notification;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
-class EmailQualityNotification extends Notification 
+class EmailQualityNotification extends Notification
 {
-
     /**
      * Create a new notification instance.
      *
@@ -55,7 +49,6 @@ class EmailQualityNotification extends Notification
      * Get the mail representation of the notification.
      *
      * @param  mixed  $notifiable
-     * @return MailMessage
      */
     public function toMail($notifiable)
     {
@@ -76,7 +69,6 @@ class EmailQualityNotification extends Notification
 
     public function toSlack($notifiable)
     {
-
         $content = "Email Quality notification for Company {$this->company->company_key} \n";
 
         $owner = $this->company->owner();
@@ -84,7 +76,7 @@ class EmailQualityNotification extends Notification
         $content .= "Owner {$owner->present()->name() } | {$owner->email} \n";
         $content .= "Spam trigger: {$this->spam_string}";
 
-        return (new SlackMessage)
+        return (new SlackMessage())
                 ->success()
                 ->from(ctrans('texts.notification_bot'))
                 ->image('https://app.invoiceninja.com/favicon.png')

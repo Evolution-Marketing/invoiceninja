@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -69,7 +70,6 @@ class PaymentMigrationRepository extends BaseRepository
      */
     private function applyPayment(array $data, Payment $payment): ?Payment
     {
-
         //check currencies here and fill the exchange rate data if necessary
         if (! $payment->id) {
             $this->processExchangeRates($data, $payment);
@@ -88,7 +88,7 @@ class PaymentMigrationRepository extends BaseRepository
 
         if (! array_key_exists('status_id', $data)) {
             info('payment with no status id?');
-            info(print_r($data, 1));
+            info(print_r($data, true));
         }
 
         $payment->status_id = $data['status_id'];
@@ -99,17 +99,18 @@ class PaymentMigrationRepository extends BaseRepository
         }
 
         $payment->deleted_at = $data['deleted_at'] ?: null;
-        $payment->save();
 
-        if (array_key_exists('currency_id', $data) && $data['currency_id'] == 0) {
-            $payment->currency_id = $payment->company->settings->currency_id;
-            $payment->save();
+
+        if (!$payment->currency_id || $payment->currency_id == 0 || $payment->currency_id == '') {
+            $payment->currency_id = $payment->client->settings->currency_id ?? $payment->company->settings->currency_id;
         }
 
         /*Ensure payment number generated*/
-        if (! $payment->number || strlen($payment->number) == 0) {
+        if (! $payment->number || strlen($payment->number) == 0) {//@phpstan-ignore-line
             $payment->number = $payment->client->getNextPaymentNumber($payment->client, $payment);
         }
+
+        $payment->save();
 
         $invoice_totals = 0;
         $credit_totals = 0;
@@ -120,9 +121,9 @@ class PaymentMigrationRepository extends BaseRepository
             $invoice_totals = array_sum(array_column($data['invoices'], 'amount'));
             $refund_totals = array_sum(array_column($data['invoices'], 'refunded'));
 
-            $invoices = Invoice::whereIn('id', array_column($data['invoices'], 'invoice_id'))->withTrashed()->get();
+            $invoices = Invoice::query()->whereIn('id', array_column($data['invoices'], 'invoice_id'))->withTrashed()->get();
 
-            $payment->invoices()->saveMany($invoices);
+            $payment->invoices()->saveMany($invoices); // 1:1 relationship so this is ok
 
             $payment->invoices->each(function ($inv) use ($invoice_totals, $refund_totals, $payment) {
                 if ($payment->status_id != Payment::STATUS_CANCELLED || ! $payment->is_deleted) {
@@ -146,9 +147,11 @@ class PaymentMigrationRepository extends BaseRepository
         }
 
         if (array_key_exists('credits', $data) && is_array($data['credits']) && count($data['credits']) > 0) {
+
+            /** @var float $credit_totals **/
             $credit_totals = array_sum(array_column($data['credits'], 'amount'));
 
-            $credits = Credit::whereIn('id', array_column($data['credits'], 'credit_id'))->withTrashed()->get();
+            $credits = Credit::query()->whereIn('id', array_column($data['credits'], 'credit_id'))->withTrashed()->get();
 
             $payment->credits()->saveMany($credits);
 
@@ -162,9 +165,10 @@ class PaymentMigrationRepository extends BaseRepository
             });
         }
 
-        $fields = new stdClass;
+        $fields = new stdClass();
 
         $fields->payment_id = $payment->id;
+        $fields->client_id = $payment->client_id;
         $fields->user_id = $payment->user_id;
         $fields->company_id = $payment->company_id;
         $fields->activity_type_id = Activity::CREATE_PAYMENT;
@@ -193,17 +197,18 @@ class PaymentMigrationRepository extends BaseRepository
     /**
      * If the client is paying in a currency other than
      * the company currency, we need to set a record.
-     * @param $data
-     * @param $payment
-     * @return
+     *
+     * @param array$data
+     * @param \App\Models\Payment $payment
+     * @return \App\Models\Payment
      */
-    private function processExchangeRates($data, $payment)
+    private function processExchangeRates($data, $payment): \App\Models\Payment
     {
         if ($payment->exchange_rate != 1) {
             return $payment;
         }
 
-        $client = Client::where('id', $data['client_id'])->withTrashed()->first();
+        $client = Client::query()->where('id', $data['client_id'])->withTrashed()->first();
 
         $client_currency = $client->getSetting('currency_id');
         $company_currency = $client->company->settings->currency_id;

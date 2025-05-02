@@ -1,101 +1,85 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Credit;
 
-use App\Jobs\Entity\CreateEntityPdf;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
 use App\Jobs\Util\UnlinkFile;
 use App\Libraries\MultiDB;
 use App\Mail\DownloadCredits;
 use App\Models\Company;
+use App\Models\CreditInvitation;
 use App\Models\User;
-use App\Utils\TempFile;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use ZipArchive;
 
 class ZipCredits implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public $credits;
-
-    private $company;
-
-    private $user;
-
-    public $settings;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $tries = 1;
 
-    /**
-     * @param $invoices
-     * @param Company $company
-     * @param $email
-     * @deprecated confirm to be deleted
-     * Create a new job instance.
-     */
-    public function __construct($credits, Company $company, User $user)
+    public $timeout = 3600;
+
+    public function __construct(protected mixed $credit_ids, protected Company $company, protected User $user)
     {
-        $this->credits = $credits;
-
-        $this->company = $company;
-
-        $this->user = $user;
-
-        $this->settings = $company->settings;
     }
 
     /**
      * Execute the job.
      *
      * @return void
-     * @throws \ZipStream\Exception\FileNotFoundException
-     * @throws \ZipStream\Exception\FileNotReadableException
-     * @throws \ZipStream\Exception\OverflowException
      */
     public function handle()
     {
         MultiDB::setDb($this->company->db);
 
-        // create new zip object
+        $settings = $this->company->settings;
         $zipFile = new \PhpZip\ZipFile();
-        $file_name = date('Y-m-d').'_'.str_replace(' ', '_', trans('texts.credits')).'.zip';
-        $invitation = $this->credits->first()->invitations->first();
-        $path = $this->credits->first()->client->quote_filepath($invitation);
+        $file_name = now()->addSeconds($this->company->timezone_offset())->format('Y-m-d-h-m-s').'_'.str_replace(' ', '_', trans('texts.credits')).'.zip';
 
-        $this->credits->each(function ($credit) {
-            (new CreateEntityPdf($credit->invitations()->first()))->handle();
-        });
+        nlog($this->credit_ids);
+
+        $invitations = CreditInvitation::query()->with('credit')->whereIn('credit_id', $this->credit_ids)->get();
+
+        if ($invitations->count() == 0) {
+            nlog("no Credit Invitations");
+            return;
+        }
+
+        $invitation = $invitations->first();
+
+        $path = $invitation->contact->client->credit_filepath($invitation);
 
         try {
-            foreach ($this->credits as $credit) {
-                $file = $credit->service()->getCreditPdf($credit->invitations()->first());
-                $zip_file_name = basename($file);
-                $zipFile->addFromString($zip_file_name, Storage::get($file));
+            foreach ($invitations as $invitation) {
+                $file = (new \App\Jobs\Entity\CreateRawPdf($invitation))->handle();
+                $zipFile->addFromString($invitation->credit->numberFormatter() . '.pdf', $file);
             }
 
             Storage::put($path.$file_name, $zipFile->outputAsString());
 
-            $nmo = new NinjaMailerObject;
+            $nmo = new NinjaMailerObject();
             $nmo->mailable = new DownloadCredits(Storage::url($path.$file_name), $this->company);
             $nmo->to_user = $this->user;
-            $nmo->settings = $this->settings;
+            $nmo->settings = $settings;
             $nmo->company = $this->company;
 
             NinjaMailerJob::dispatch($nmo);
@@ -106,5 +90,11 @@ class ZipCredits implements ShouldQueue
         } finally {
             $zipFile->close();
         }
+    }
+
+    public function failed($exception)
+    {
+        nlog("ZipCredits:: Exception:: => ".$exception->getMessage());
+        config(['queue.failed.driver' => null]);
     }
 }

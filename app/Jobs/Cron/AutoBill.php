@@ -1,43 +1,43 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Cron;
 
-use App\Libraries\MultiDB;
 use App\Models\Invoice;
-use Illuminate\Foundation\Bus\Dispatchable;
+use App\Models\Webhook;
+use App\Libraries\MultiDB;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Queue\InteractsWithQueue;
+use App\Jobs\Entity\EmailEntity;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
 
 class AutoBill implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $tries = 1;
-
-    public Invoice $invoice;
-
-    public string $db;
 
     /**
      * Create a new job instance.
      *
      * @return void
      */
-    public function __construct(Invoice $invoice, ?string $db)
+    public function __construct(public int $invoice_id, public ?string $db, public bool $send_email_on_failure = false)
     {
-        $this->invoice = $invoice;
-        $this->db = $db;
     }
 
     /**
@@ -45,20 +45,52 @@ class AutoBill implements ShouldQueue
      *
      * @return void
      */
-    public function handle() : void
+    public function handle(): void
     {
         set_time_limit(0);
 
         if ($this->db) {
             MultiDB::setDb($this->db);
         }
+        $invoice = false;
+
 
         try {
-            nlog("autobill {$this->invoice->id}");
 
-            $this->invoice->service()->autoBill();
+            nlog("autobill {$this->invoice_id}");
+
+            $invoice = Invoice::withTrashed()->find($this->invoice_id);
+
+            if ($invoice) {
+                $invoice->service()->autoBill();
+            }
+
         } catch (\Exception $e) {
-            nlog("Failed to capture payment for {$this->invoice->company_id} - {$this->invoice->number} ->".$e->getMessage());
+            nlog("Failed to capture payment for {$this->invoice_id} ->".$e->getMessage());
+
+            if ($this->send_email_on_failure && $invoice) {
+
+                $invoice->invitations->each(function ($invitation) use ($invoice) {
+
+                    //2025-04-06 additional conditional check to prevent duplicate emails from being sent.
+                    if ($invitation->contact && !$invitation->contact->trashed() && strlen($invitation->contact->email) >= 1 && $invoice->client->getSetting('auto_email_invoice') && !$invitation->contact->is_locked && $invoice->client->getSetting('client_online_payment_notification')) {
+                        try {
+                            EmailEntity::dispatch($invitation->withoutRelations(), $invoice->company->db)->delay(rand(1, 2));
+
+                            $invoice->entityEmailEvent($invitation, 'invoice', 'email_template_invoice');
+
+                        } catch (\Exception $e) {
+                            nlog($e->getMessage());
+                        }
+
+                        nlog("Firing email for invoice {$invoice->number} which failed to capture payment");
+                    }
+                });
+
+                $invoice->sendEvent(Webhook::EVENT_SENT_INVOICE, "client");
+
+            }
+
         }
     }
 }

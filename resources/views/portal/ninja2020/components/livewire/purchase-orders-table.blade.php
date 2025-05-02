@@ -2,7 +2,7 @@
     <div class="flex items-center justify-between">
         <div class="flex items-center">
             <span class="hidden mr-2 text-sm md:block">{{ ctrans('texts.per_page') }}</span>
-            <select wire:model="per_page" class="py-1 text-sm form-select">
+            <select wire:model.live="per_page" class="py-1 text-sm form-select">
                 <option>5</option>
                 <option selected>10</option>
                 <option>15</option>
@@ -11,11 +11,11 @@
         </div>
         <div class="flex items-center">
             <div class="mr-3">
-                <input wire:model="status" value="sent" type="checkbox" class="cursor-pointer form-checkbox" id="paid-checkbox">
+                <input wire:model.live="status" value="sent" type="checkbox" class="cursor-pointer form-checkbox" id="paid-checkbox">
                 <label for="paid-checkbox" class="text-sm cursor-pointer">{{ ctrans('texts.status_sent') }}</label>
             </div>
             <div class="mr-3">
-                <input wire:model="status" value="accepted" type="checkbox" class="cursor-pointer form-checkbox" id="unpaid-checkbox">
+                <input wire:model.live="status" value="accepted" type="checkbox" class="cursor-pointer form-checkbox" id="unpaid-checkbox">
                 <label for="unpaid-checkbox" class="text-sm cursor-pointer">{{ ctrans('texts.accepted') }}</label>
             </div>
         </div>
@@ -78,10 +78,10 @@
                                 {{ $purchase_order->translateDate($purchase_order->date, $purchase_order->company->date_format(), $purchase_order->company->locale()) }}
                             </td>
                             <td class="px-6 py-4 text-sm leading-5 text-gray-500 whitespace-nowrap">
-                                {{ App\Utils\Number::formatMoney($purchase_order->amount, $purchase_order->company) }}
+                                {{ App\Utils\Number::formatMoney($purchase_order->amount, $purchase_order->vendor) }}
                             </td>
                             <td class="px-6 py-4 text-sm leading-5 text-gray-500 whitespace-nowrap">
-                            {{ App\Utils\Number::formatMoney($purchase_order->balance, $purchase_order->company) }}
+                            {{ App\Utils\Number::formatMoney($purchase_order->balance, $purchase_order->vendor) }}
                             </td>
                             <td class="px-6 py-4 text-sm leading-5 text-gray-500 whitespace-nowrap">
                                 {{ $purchase_order->translateDate($purchase_order->due_date, $purchase_order->company->date_format(), $purchase_order->company->locale()) }}
@@ -117,5 +117,5 @@
 </div>
 
 @push('footer')
-    <script src="{{ asset('js/clients/purchase_orders/action-selectors.js') }}"></script>
+    @vite('resources/js/clients/purchase_orders/action-selectors.js')
 @endpush

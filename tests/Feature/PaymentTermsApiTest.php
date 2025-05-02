@@ -22,8 +22,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Http\Controllers\PaymentTermController
+ * 
+ *  App\Http\Controllers\PaymentTermController
  */
 class PaymentTermsApiTest extends TestCase
 {
@@ -31,7 +31,7 @@ class PaymentTermsApiTest extends TestCase
     use DatabaseTransactions;
     use MockAccountData;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -47,6 +47,17 @@ class PaymentTermsApiTest extends TestCase
             ThrottleRequests::class
         );
     }
+
+    public function testPaymentTermsGetWithFilter()
+    {
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->get('/api/v1/payment_terms?filter=hey');
+
+        $response->assertStatus(200);
+    }
+
 
     public function testPaymentTermsGet()
     {

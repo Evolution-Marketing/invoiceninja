@@ -1,28 +1,28 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Services\Invoice;
 
-use App\Jobs\Ninja\TransactionLog;
+use App\Events\Invoice\InvoiceWasDeleted;
+use App\Jobs\Inventory\AdjustProductInventory;
+use App\Models\Credit;
 use App\Models\Invoice;
-use App\Models\TransactionEvent;
+use App\Models\Quote;
 use App\Services\AbstractService;
 use App\Utils\Traits\GeneratesCounter;
-use Illuminate\Support\Facades\DB;
 
 class MarkInvoiceDeleted extends AbstractService
 {
     use GeneratesCounter;
-
-    private $invoice;
 
     private $adjustment_amount = 0;
 
@@ -30,15 +30,15 @@ class MarkInvoiceDeleted extends AbstractService
 
     private $balance_adjustment = 0;
 
-    public function __construct(Invoice $invoice)
+    public function __construct(public Invoice $invoice)
     {
-        $this->invoice = $invoice;
     }
 
     public function run()
     {
-        if ($this->invoice->is_deleted) {
-            return $this->invoice;
+
+        if ($this->invoice->company->track_inventory) {
+            (new AdjustProductInventory($this->invoice->company, $this->invoice, []))->handleDeletedInvoice();
         }
 
         $this->cleanup()
@@ -46,24 +46,18 @@ class MarkInvoiceDeleted extends AbstractService
              ->deletePaymentables()
              ->adjustPayments()
              ->adjustPaidToDateAndBalance()
-             ->adjustLedger();
+             ->adjustLedger()
+             ->triggeredActions();
 
-        $transaction = [
-            'invoice' => $this->invoice->transaction_event(),
-            'payment' => $this->invoice->payments()->exists() ? $this->invoice->payments()->first()->transaction_event() : [],
-            'client' => $this->invoice->client->transaction_event(),
-            'credit' => [],
-            'metadata' => ['total_payments' => $this->total_payments, 'balance_adjustment' => $this->balance_adjustment, 'adjustment_amount' => $this->adjustment_amount],
-        ];
+        $this->invoice->delete();
 
-        TransactionLog::dispatch(TransactionEvent::INVOICE_DELETED, $transaction, $this->invoice->company->db);
+        event(new \App\Events\Invoice\InvoiceWasDeleted($this->invoice, $this->invoice->company, \App\Utils\Ninja::eventVars(auth()->guard('api')->user() ? auth()->guard('api')->user()->id : null)));
 
         return $this->invoice;
     }
 
     private function adjustLedger()
     {
-        // $this->invoice->ledger()->updatePaymentBalance($this->adjustment_amount * -1, 'Invoice Deleted - reducing ledger balance'); //reduces the payment balance by payment totals
         $this->invoice->ledger()->updatePaymentBalance($this->balance_adjustment * -1, 'Invoice Deleted - reducing ledger balance'); //reduces the payment balance by payment totals
 
         return $this;
@@ -71,29 +65,18 @@ class MarkInvoiceDeleted extends AbstractService
 
     private function adjustPaidToDateAndBalance()
     {
-        // $client = $this->invoice->client->fresh();
-        // $client->paid_to_date += $this->adjustment_amount * -1;
-        // $client->balance += $this->balance_adjustment * -1;
-        // $client->save();
 
-        // 06-09-2022
+        $ba = $this->balance_adjustment * -1;
+        $aa = $this->adjustment_amount * -1;
+        $cb = $this->invoice->client->balance;
+
+        nlog("APB => {$this->invoice->number} - BA={$ba} - AA={$aa} - CB={$cb}");
+
         $this->invoice
              ->client
              ->service()
-             ->updateBalanceAndPaidToDate($this->balance_adjustment * -1, $this->adjustment_amount * -1)
-             ->save(); //reduces the paid to date by the payment totals
-
-        return $this;
-    }
-
-    // @deprecated
-    private function adjustBalance()
-    {
-        // $client = $this->invoice->client->fresh();
-        // $client->balance += $this->balance_adjustment * -1;
-        // $client->save();
-
-        // $this->invoice->client->service()->updateBalance($this->balance_adjustment * -1)->save(); //reduces the client balance by the invoice amount.
+             ->updateBalanceAndPaidToDate($ba, $aa)
+             ->save();
 
         return $this;
     }
@@ -102,29 +85,33 @@ class MarkInvoiceDeleted extends AbstractService
     private function adjustPayments()
     {
         //if total payments = adjustment amount - that means we need to delete the payments as well.
-
         if ($this->adjustment_amount == $this->total_payments) {
             $this->invoice->payments()->update(['payments.deleted_at' => now(), 'payments.is_deleted' => true]);
-        } else {
-
-            //adjust payments down by the amount applied to the invoice payment.
-
-            $this->invoice->payments->each(function ($payment) {
-                $payment_adjustment = $payment->paymentables
-                                                ->where('paymentable_type', '=', 'invoices')
-                                                ->where('paymentable_id', $this->invoice->id)
-                                                ->sum(DB::raw('amount'));
-
-                $payment_adjustment -= $payment->paymentables
-                                                ->where('paymentable_type', '=', 'invoices')
-                                                ->where('paymentable_id', $this->invoice->id)
-                                                ->sum(DB::raw('refunded'));
-
-                $payment->amount -= $payment_adjustment;
-                $payment->applied -= $payment_adjustment;
-                $payment->save();
-            });
         }
+
+
+        //adjust payments down by the amount applied to the invoice payment.
+        $this->invoice->payments->each(function ($payment) {
+            $payment_adjustment = $payment->paymentables
+                                            ->where('paymentable_type', '=', 'invoices')
+                                            ->where('paymentable_id', $this->invoice->id)
+                                            ->sum('amount');
+
+            $payment_adjustment -= $payment->paymentables
+                                            ->where('paymentable_type', '=', 'invoices')
+                                            ->where('paymentable_id', $this->invoice->id)
+                                            ->sum('refunded');
+
+            //14-07-2023 - Do not include credits in the payment adjustment.
+            $payment_adjustment -= $payment->paymentables
+                                            ->where('paymentable_type', '=', 'App\Models\Credit')
+                                            ->sum('amount');
+
+            $payment->amount -= $payment_adjustment;
+            $payment->applied -= $payment_adjustment;
+            $payment->save();
+        });
+
 
         return $this;
     }
@@ -141,17 +128,29 @@ class MarkInvoiceDeleted extends AbstractService
             $this->adjustment_amount += $payment->paymentables
                                                 ->where('paymentable_type', '=', 'invoices')
                                                 ->where('paymentable_id', $this->invoice->id)
-                                                ->sum(DB::raw('amount'));
+                                                ->sum('amount');
 
             $this->adjustment_amount -= $payment->paymentables
                                                 ->where('paymentable_type', '=', 'invoices')
                                                 ->where('paymentable_id', $this->invoice->id)
-                                                ->sum(DB::raw('refunded'));
+                                                ->sum('refunded');
         }
 
         $this->total_payments = $this->invoice->payments->sum('amount') - $this->invoice->payments->sum('refunded');
 
         $this->balance_adjustment = $this->invoice->balance;
+
+        $pre_count = count((array)$this->invoice->line_items);
+
+        $items = collect((array)$this->invoice->line_items)
+                    ->filter(function ($item) {
+                        return $item->type_id != '3';
+                    })->toArray();
+
+        if (count($items) < $pre_count) {
+            $this->invoice->line_items = array_values($items);
+            $this->invoice = $this->invoice->calc()->getInvoice();
+        }
 
         return $this;
     }
@@ -202,7 +201,28 @@ class MarkInvoiceDeleted extends AbstractService
                     ->where('paymentable_type', '=', 'invoices')
                     ->where('paymentable_id', $this->invoice->id)
                     ->update(['deleted_at' => now()]);
+
+            $pp = \App\Models\Paymentable::where('payment_id', $payment->id)
+                                ->where('paymentable_type', \App\Models\Credit::class)
+                                ->where('amount', $this->invoice->amount)
+                                ->first();
+
+            if ($pp) {
+                $pp->delete();
+            }
+
         });
+
+        return $this;
+    }
+
+    private function triggeredActions(): self
+    {
+        if ($this->invoice->quote) {
+            $this->invoice->quote->invoice_id = null;
+            $this->invoice->quote->status_id = Quote::STATUS_SENT;
+            $this->invoice->pushQuietly();
+        }
 
         return $this;
     }

@@ -1,26 +1,28 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Transformers;
 
-use App\Models\Activity;
-use App\Models\Client;
-use App\Models\ClientContact;
-use App\Models\ClientGatewayToken;
-use App\Models\CompanyLedger;
-use App\Models\Document;
-use App\Models\SystemLog;
-use App\Utils\Traits\MakesHash;
-use League\Fractal\Resource\Collection;
 use stdClass;
+use App\Models\Client;
+use App\Models\Activity;
+use App\Models\Document;
+use App\Models\Location;
+use App\Models\SystemLog;
+use App\Models\GroupSetting;
+use App\Models\ClientContact;
+use App\Models\CompanyLedger;
+use App\Utils\Traits\MakesHash;
+use App\Models\ClientGatewayToken;
 
 /**
  * class ClientTransformer.
@@ -29,25 +31,27 @@ class ClientTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         'contacts',
         'documents',
         'gateway_tokens',
+        'locations',
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'activities',
         'ledger',
         'system_logs',
+        'group_settings',
     ];
 
     /**
      * @param Client $client
      *
-     * @return Collection
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
     public function includeActivities(Client $client)
     {
@@ -66,13 +70,25 @@ class ClientTransformer extends EntityTransformer
     /**
      * @param Client $client
      *
-     * @return Collection
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
     public function includeContacts(Client $client)
     {
         $transformer = new ClientContactTransformer($this->serializer);
 
         return $this->includeCollection($client->contacts, $transformer, ClientContact::class);
+    }
+
+    /**
+     * @param Client $client
+     *
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
+     */
+    public function includeLocations(Client $client)
+    {
+        $transformer = new LocationTransformer($this->serializer);
+
+        return $this->includeCollection($client->locations, $transformer, Location::class);
     }
 
     public function includeGatewayTokens(Client $client)
@@ -96,6 +112,17 @@ class ClientTransformer extends EntityTransformer
         return $this->includeCollection($client->system_logs, $transformer, SystemLog::class);
     }
 
+    public function includeGroupSettings(Client $client)
+    {
+        if (!$client->group_settings) {
+            return null;
+        }
+
+        $transformer = new GroupSettingTransformer($this->serializer);
+
+        return $this->includeItem($client->group_settings, $transformer, GroupSetting::class);
+    }
+
     /**
      * @param Client $client
      *
@@ -114,6 +141,7 @@ class ClientTransformer extends EntityTransformer
             'balance' => (float) $client->balance,
             'group_settings_id' => isset($client->group_settings_id) ? (string) $this->encodePrimaryKey($client->group_settings_id) : '',
             'paid_to_date' => (float) $client->paid_to_date,
+            'payment_balance' => (float) $client->payment_balance,
             'credit_balance' => (float) $client->credit_balance,
             'last_login' => (int) $client->last_login,
             'size_id' => (string) $client->size_id,
@@ -137,7 +165,7 @@ class ClientTransformer extends EntityTransformer
             'shipping_state' => $client->shipping_state ?: '',
             'shipping_postal_code' => $client->shipping_postal_code ?: '',
             'shipping_country_id' => (string) $client->shipping_country_id ?: '',
-            'settings' => $client->settings ?: new stdClass,
+            'settings' => $client->settings ?: new stdClass(),
             'is_deleted' => (bool) $client->is_deleted,
             'vat_number' => $client->vat_number ?: '',
             'id_number' => $client->id_number ?: '',
@@ -146,6 +174,12 @@ class ClientTransformer extends EntityTransformer
             'created_at' => (int) $client->created_at,
             'display_name' => $client->present()->name(),
             'number' => (string) $client->number ?: '',
+            'has_valid_vat_number' => (bool) $client->has_valid_vat_number,
+            'is_tax_exempt' => (bool) $client->is_tax_exempt,
+            'routing_id' => (string) $client->routing_id,
+            'tax_info' => $client->tax_data ?: new \stdClass(),
+            'classification' => $client->classification ?: '',
+            'e_invoice' => $client->e_invoice ?: new \stdClass(),
         ];
     }
 }

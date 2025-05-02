@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -34,14 +35,14 @@ class CreditRepository extends BaseRepository
      * @return     Credit|Credit|null  Credit Object
      * @throws \ReflectionException
      */
-    public function save(array $data, Credit $credit) : ?Credit
+    public function save(array $data, Credit $credit): ?Credit
     {
         return $this->alternativeSave($data, $credit);
     }
 
-    public function getInvitationByKey($key) :?CreditInvitation
+    public function getInvitationByKey($key): ?CreditInvitation
     {
-        return CreditInvitation::where('key', $key)->first();
+        return CreditInvitation::query()->where('key', $key)->first();
     }
 
     public function delete($credit)
@@ -53,7 +54,6 @@ class CreditRepository extends BaseRepository
         $credit = $credit->service()->deleteCredit()->save();
 
         return parent::delete($credit);
-
     }
 
     public function restore($credit)
@@ -69,5 +69,4 @@ class CreditRepository extends BaseRepository
 
         return $credit;
     }
-
 }

@@ -1,18 +1,23 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Transformers;
 
+use App\Models\Client;
 use App\Models\Document;
 use App\Models\Expense;
+use App\Models\ExpenseCategory;
+use App\Models\Invoice;
+use App\Models\Project;
 use App\Models\Vendor;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -25,17 +30,20 @@ class ExpenseTransformer extends EntityTransformer
 {
     use MakesHash;
     use SoftDeletes;
-    
-    protected $defaultIncludes = [
+
+    protected array $defaultIncludes = [
         'documents',
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'client',
         'vendor',
+        'category',
+        'invoice',
+        'project',
     ];
 
     public function includeDocuments(Expense $expense)
@@ -43,6 +51,17 @@ class ExpenseTransformer extends EntityTransformer
         $transformer = new DocumentTransformer($this->serializer);
 
         return $this->includeCollection($expense->documents, $transformer, Document::class);
+    }
+
+    public function includeProject(Expense $expense): ?Item
+    {
+        $transformer = new ProjectTransformer($this->serializer);
+
+        if (!$expense->project) {
+            return null;
+        }
+
+        return $this->includeItem($expense->project, $transformer, Project::class);
     }
 
     public function includeClient(Expense $expense): ?Item
@@ -54,6 +73,28 @@ class ExpenseTransformer extends EntityTransformer
         }
 
         return $this->includeItem($expense->client, $transformer, Client::class);
+    }
+
+    public function includeInvoice(Expense $expense): ?Item
+    {
+        $transformer = new InvoiceTransformer($this->serializer);
+
+        if (!$expense->invoice) {
+            return null;
+        }
+
+        return $this->includeItem($expense->invoice, $transformer, Invoice::class);
+    }
+
+    public function includeCategory(Expense $expense): ?Item
+    {
+        $transformer = new ExpenseCategoryTransformer($this->serializer);
+
+        if (!$expense->category) {
+            return null;
+        }
+
+        return $this->includeItem($expense->category, $transformer, ExpenseCategory::class);
     }
 
     public function includeVendor(Expense $expense): ?Item
@@ -87,7 +128,7 @@ class ExpenseTransformer extends EntityTransformer
             'currency_id' => (string) $expense->currency_id ?: '',
             'category_id' => $this->encodePrimaryKey($expense->category_id),
             'payment_type_id' => (string) $expense->payment_type_id ?: '',
-            'recurring_expense_id' => (string) $expense->recurring_expense_id ?: '',
+            'recurring_expense_id' => (string) $this->encodePrimaryKey($expense->recurring_expense_id) ?: '',
             'is_deleted' => (bool) $expense->is_deleted,
             'should_be_invoiced' => (bool) $expense->should_be_invoiced,
             'invoice_documents' => (bool) $expense->invoice_documents,
@@ -103,7 +144,7 @@ class ExpenseTransformer extends EntityTransformer
             'private_notes' => (string) $expense->private_notes ?: '',
             'public_notes' => (string) $expense->public_notes ?: '',
             'transaction_reference' => (string) $expense->transaction_reference ?: '',
-            'transaction_id' => (string) $expense->transaction_id ?: '',
+            'transaction_id' => (string) $this->encodePrimaryKey($expense->transaction_id) ?: '',
             'date' => $expense->date ?: '',
             'number' => (string)$expense->number ?: '',
             'payment_date' => $expense->payment_date ?: '',
@@ -121,6 +162,8 @@ class ExpenseTransformer extends EntityTransformer
             'uses_inclusive_taxes' => (bool) $expense->uses_inclusive_taxes,
             'calculate_tax_by_amount' => (bool) $expense->calculate_tax_by_amount,
             'entity_type' => 'expense',
+            'e_invoice' => $expense->e_invoice ?: new \stdClass(),
+
         ];
     }
 }

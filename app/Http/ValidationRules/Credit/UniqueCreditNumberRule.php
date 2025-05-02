@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Credit Ninja (https://creditninja.com).
  *
@@ -47,9 +48,9 @@ class UniqueCreditNumberRule implements Rule
     /**
      * @return bool
      */
-    private function checkIfCreditNumberUnique() : bool
+    private function checkIfCreditNumberUnique(): bool
     {
-        $credit = Credit::where('client_id', $this->input['client_id'])
+        $credit = Credit::query()->where('client_id', $this->input['client_id'])
                         ->where('number', $this->input['number'])
                         ->withTrashed()
                         ->exists();

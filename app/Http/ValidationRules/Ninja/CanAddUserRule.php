@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -31,22 +32,23 @@ class CanAddUserRule implements Rule
      */
     public function passes($attribute, $value)
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
         /* If the user is active then we can add them to the company */
-        if (User::where('email', request()->input('email'))->where('account_id', auth()->user()->account_id)->where('is_deleted', 0)->exists()) {
+        if (User::where('email', request()->input('email'))->where('account_id', $user->account_id)->where('is_deleted', 0)->exists()) {
             return true;
         }
 
-        /* Check that we have sufficient quota to allow this to happen */
         $count = CompanyUser::query()
-                          ->where('company_user.account_id', auth()->user()->account_id)
-                          ->join('users', 'users.id', '=', 'company_user.user_id')
-                          ->whereNull('users.deleted_at')
-                          ->whereNull('company_user.deleted_at')
-                          ->distinct()
-                          ->count('company_user.user_id');
+                        ->where("company_user.account_id", $user->account_id)
+                        ->join("users", "users.id", "=", "company_user.user_id")
+                        ->whereNull("users.deleted_at")
+                        ->whereNull("company_user.deleted_at")
+                        ->distinct()
+                        ->count("users.email");
 
-        return $count < auth()->user()->company()->account->num_users;
+        return $count < $user->company()->account->num_users;
     }
 
     /**
@@ -54,6 +56,11 @@ class CanAddUserRule implements Rule
      */
     public function message()
     {
-        return ctrans('texts.limit_users', ['limit' => auth()->user()->company()->account->num_users]);
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return ctrans('texts.limit_users', ['limit' => $user->company()->account->num_users]);
+
     }
 }

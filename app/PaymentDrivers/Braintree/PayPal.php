@@ -10,9 +10,12 @@ use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
 use App\PaymentDrivers\BraintreePaymentDriver;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
+use App\Utils\Traits\MakesHash;
 
-class PayPal
+class PayPal implements LivewireMethodInterface
 {
+    use MakesHash;
     /**
      * @var BraintreePaymentDriver
      */
@@ -45,8 +48,7 @@ class PayPal
      */
     public function paymentView(array $data)
     {
-        $data['gateway'] = $this->braintree;
-        $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
+        $data = $this->paymentData($data);
 
         return render('gateways.braintree.paypal.pay', $data);
     }
@@ -68,21 +70,28 @@ class PayPal
 
         $token = $this->getPaymentToken($request->all(), $customer->id);
 
+        $total_taxes = \App\Models\Invoice::query()->whereIn('id', $this->transformKeys(array_column($this->braintree->payment_hash->invoices(), 'invoice_id')))->withTrashed()->sum('total_taxes');
+        $invoice = $this->braintree->payment_hash->fee_invoice;
+        $po_number = $invoice->po_number ?? $invoice->number ?? '';
+
         $result = $this->braintree->gateway->transaction()->sale([
             'amount' => $this->braintree->payment_hash->data->amount_with_fee,
             'paymentMethodToken' => $token,
             'deviceData' => $state['client-data'],
+            'channel' => 'invoiceninja_BT',
             'options' => [
                 'submitForSettlement' => true,
                 'paypal' => [
                     'description' => 'Meaningful description.',
                 ],
             ],
+            'taxAmount' => $total_taxes,
+            'purchaseOrderNumber' => substr($po_number, 0, 16),
         ]);
 
         if ($result->success) {
             $this->braintree->logSuccessfulGatewayResponse(
-                ['response' => $request->server_response, 'data' => $this->braintree->payment_hash],
+                ['response' => $request->server_response, 'data' => $this->braintree->payment_hash->data],
                 SystemLog::TYPE_BRAINTREE
             );
 
@@ -111,7 +120,11 @@ class PayPal
             'paymentMethodNonce' => $gateway_response->nonce,
         ]);
 
-        return $payment_method->paymentMethod->token;
+        if ($payment_method->success) {
+            return $payment_method->paymentMethod->token;
+        } else {
+            throw new PaymentFailed(property_exists($payment_method, 'message') ? $payment_method->message : 'Undefined error storing payment token.', 0);
+        }
     }
 
     /**
@@ -169,7 +182,7 @@ class PayPal
     private function storePaymentMethod($method, string $customer_reference)
     {
         try {
-            $payment_meta = new \stdClass;
+            $payment_meta = new \stdClass();
             $payment_meta->email = (string) $method->email;
             $payment_meta->type = GatewayType::PAYPAL;
 
@@ -183,5 +196,24 @@ class PayPal
         } catch (\Exception $e) {
             return $this->braintree->processInternallyFailedPayment($this->braintree, $e);
         }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.braintree.paypal.pay_livewire';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $data['gateway'] = $this->braintree;
+        $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
+
+        return $data;
     }
 }

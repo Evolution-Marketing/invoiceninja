@@ -2,7 +2,7 @@
     <div class="flex items-center justify-between">
         <div class="flex items-center">
             <span class="mr-2 text-sm hidden md:block">{{ ctrans('texts.per_page') }}</span>
-            <select wire:model="per_page" class="form-select py-1 text-sm">
+            <select wire:model.live="per_page" class="form-select py-1 text-sm">
                 <option>5</option>
                 <option selected>10</option>
                 <option>15</option>
@@ -60,13 +60,13 @@
                             {{ $payment->translatedType() }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
-                            {!! \App\Utils\Number::formatMoney($payment->amount, $payment->client) !!}
+                            {!! \App\Utils\Number::formatMoney($payment->amount > 0 ? $payment->amount : $payment->credits->sum('pivot.amount'), $payment->client) !!}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
                             {{ \Illuminate\Support\Str::limit($payment->transaction_reference, 35) }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
-                            {!! \App\Models\Payment::badgeForStatus($payment->status_id) !!}
+                            {!! $payment->badgeForStatus() !!}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap flex items-center justify-end text-sm leading-5 font-medium">
                             <a href="{{ route('client.payments.show', $payment->hashed_id) }}" class="text-blue-600 hover:text-indigo-900 focus:outline-none focus:underline">

@@ -1,28 +1,85 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Models;
 
+use Laravel\Scout\Searchable;
+use App\Utils\Traits\MakesHash;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Notifications\Notifiable;
+use Laracasts\Presenter\PresentableTrait;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\Presenters\VendorContactPresenter;
 use App\Notifications\ClientContactResetPassword;
-use App\Utils\Traits\MakesHash;
-use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\Cache;
-use Laracasts\Presenter\PresentableTrait;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 
+/**
+ * App\Models\VendorContact
+ *
+ * @property int $id
+ * @property int $company_id
+ * @property int $user_id
+ * @property int $vendor_id
+ * @property int|null $created_at
+ * @property int|null $updated_at
+ * @property int|null $deleted_at
+ * @property bool $is_primary
+ * @property string|null $first_name
+ * @property string|null $last_name
+ * @property string|null $email
+ * @property string|null $phone
+ * @property string|null $custom_value1
+ * @property string|null $custom_value2
+ * @property string|null $custom_value3
+ * @property string|null $custom_value4
+ * @property bool $send_email
+ * @property string|null $email_verified_at
+ * @property string|null $confirmation_code
+ * @property bool $confirmed
+ * @property string|null $last_login
+ * @property int|null $failed_logins
+ * @property string|null $oauth_user_id
+ * @property int|null $oauth_provider_id
+ * @property string|null $google_2fa_secret
+ * @property string|null $accepted_terms_version
+ * @property string|null $avatar
+ * @property string|null $avatar_type
+ * @property string|null $avatar_size
+ * @property string $password
+ * @property string|null $token
+ * @property bool $is_locked
+ * @property string|null $contact_key
+ * @property string|null $remember_token
+ * @property-read \App\Models\Company $company
+ * @property-read mixed $contact_id
+ * @property-read mixed $hashed_id
+ * @property-read int|null $notifications_count
+ * @property-read int|null $purchase_order_invitations_count
+ * @property-read \App\Models\User $user
+ * @property-read \App\Models\Vendor $vendor
+ * @method static \Database\Factories\VendorContactFactory factory($count = null, $state = [])
+ * @method static \Illuminate\Database\Eloquent\Builder|VendorContact newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|VendorContact newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|VendorContact onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|VendorContact query()
+ * @method static \Illuminate\Database\Eloquent\Builder|VendorContact withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|VendorContact withoutTrashed()
+ * @property-read \Illuminate\Notifications\DatabaseNotificationCollection<int, \Illuminate\Notifications\DatabaseNotification> $notifications
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PurchaseOrderInvitation> $purchase_order_invitations
+ * @mixin \Eloquent
+ */
 class VendorContact extends Authenticatable implements HasLocalePreference
 {
     use Notifiable;
@@ -30,6 +87,7 @@ class VendorContact extends Authenticatable implements HasLocalePreference
     use PresentableTrait;
     use SoftDeletes;
     use HasFactory;
+    use Searchable;
 
     /* Used to authenticate a vendor */
     protected $guard = 'vendor';
@@ -51,6 +109,7 @@ class VendorContact extends Authenticatable implements HasLocalePreference
         'updated_at' => 'timestamp',
         'created_at' => 'timestamp',
         'deleted_at' => 'timestamp',
+        'last_login' => 'timestamp',
     ];
 
     protected $fillable = [
@@ -64,7 +123,32 @@ class VendorContact extends Authenticatable implements HasLocalePreference
         'email',
         'is_primary',
         'vendor_id',
+        'send_email',
     ];
+
+    public function toSearchableArray()
+    {
+        return [
+            'id' => $this->company->db.":".$this->id,
+            'name' => $this->present()->search_display(),
+            'hashed_id' => $this->hashed_id,
+            'email' => $this->email,
+            'first_name' => $this->first_name,
+            'last_name' => $this->last_name,
+            'phone' => $this->phone,
+            'custom_value1' => $this->custom_value1,
+            'custom_value2' => $this->custom_value2,
+            'custom_value3' => $this->custom_value3,
+            'custom_value4' => $this->custom_value4,
+            'company_key' => $this->company->company_key,
+            'vendor_id' => $this->vendor->hashed_id,
+        ];
+    }
+
+    public function getScoutKey()
+    {
+        return $this->company->db.":".$this->id;
+    }
 
     public function avatar()
     {
@@ -99,7 +183,7 @@ class VendorContact extends Authenticatable implements HasLocalePreference
         return $this->encodePrimaryKey($this->id);
     }
 
-    public function vendor()
+    public function vendor(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Vendor::class)->withTrashed();
     }
@@ -109,12 +193,12 @@ class VendorContact extends Authenticatable implements HasLocalePreference
         return $this->where('is_primary', true);
     }
 
-    public function company()
+    public function company(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Company::class);
     }
 
-    public function user()
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class)->withTrashed();
     }
@@ -126,11 +210,13 @@ class VendorContact extends Authenticatable implements HasLocalePreference
 
     public function preferredLocale()
     {
-        $languages = Cache::get('languages');
 
-        return $languages->filter(function ($item) {
+        /** @var \Illuminate\Support\Collection<\App\Models\Language> */
+        $languages = app('languages');
+
+        return $languages->first(function ($item) {
             return $item->id == $this->company->getSetting('language_id');
-        })->first()->locale;
+        })->locale ?? 'en';
     }
 
     /**
@@ -144,7 +230,8 @@ class VendorContact extends Authenticatable implements HasLocalePreference
     {
         return $this
             ->withTrashed()
-            ->where('id', $this->decodePrimaryKey($value))->firstOrFail();
+            ->where('id', $this->decodePrimaryKey($value))
+            ->firstOrFail();
     }
 
     public function purchase_order_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
@@ -154,10 +241,19 @@ class VendorContact extends Authenticatable implements HasLocalePreference
 
     public function getLoginLink()
     {
-
         $domain = isset($this->company->portal_domain) ? $this->company->portal_domain : $this->company->domain();
 
         return $domain.'/vendor/key_login/'.$this->contact_key;
-
     }
+
+    public function getAdminLink($use_react_link = false): string
+    {
+        return $use_react_link ? $this->getReactLink() : config('ninja.app_url');
+    }
+
+    private function getReactLink(): string
+    {
+        return config('ninja.react_url')."/#/vendors/{$this->vendor->hashed_id}";
+    }
+
 }

@@ -1,50 +1,61 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Invoice;
 
-use App\Jobs\Entity\EmailEntity;
 use App\Models\Invoice;
-use CleverIt\UBL\Invoice\Address;
-use CleverIt\UBL\Invoice\Contact;
-use CleverIt\UBL\Invoice\Country;
-use CleverIt\UBL\Invoice\Generator;
-use CleverIt\UBL\Invoice\Invoice as UBLInvoice;
-use CleverIt\UBL\Invoice\InvoiceLine;
-use CleverIt\UBL\Invoice\Item;
-use CleverIt\UBL\Invoice\LegalMonetaryTotal;
-use CleverIt\UBL\Invoice\Party;
-use CleverIt\UBL\Invoice\TaxCategory;
-use CleverIt\UBL\Invoice\TaxScheme;
-use CleverIt\UBL\Invoice\TaxSubTotal;
-use CleverIt\UBL\Invoice\TaxTotal;
-use Exception;
+use App\Models\Webhook;
+use App\Services\Email\Email;
 use Illuminate\Bus\Queueable;
+use App\Jobs\Entity\EmailEntity;
+use App\Libraries\MultiDB;
+use App\Services\Email\EmailObject;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
 class BulkInvoiceJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
-    public $invoice;
+    public $tries = 1;
 
-    public $reminder_template;
+    public $timeout = 3600;
 
-    public function __construct(Invoice $invoice, string $reminder_template)
+    private bool $contact_has_email = false;
+
+    private array $templates = [
+        'email_template_invoice',
+        'email_template_quote',
+        'email_template_credit',
+        'email_template_payment',
+        'email_template_payment_partial',
+        'email_template_statement',
+        'email_template_reminder1',
+        'email_template_reminder2',
+        'email_template_reminder3',
+        'email_template_reminder_endless',
+        'email_template_custom1',
+        'email_template_custom2',
+        'email_template_custom3',
+        'email_template_purchase_order',
+    ];
+
+    public function __construct(public array $invoice_ids, public string $db, public string $reminder_template)
     {
-        $this->invoice = $invoice;
-        $this->reminder_template = $reminder_template;
     }
 
     /**
@@ -55,14 +66,68 @@ class BulkInvoiceJob implements ShouldQueue
      */
     public function handle()
     {
-        $this->invoice->service()->touchReminder($this->reminder_template)->markSent()->save();
+        MultiDB::setDb($this->db);
 
-        $this->invoice->invitations->load('contact.client.country', 'invoice.client.country', 'invoice.company')->each(function ($invitation) {
-            EmailEntity::dispatch($invitation, $this->invoice->company, $this->reminder_template)->delay(now()->addSeconds(5));
-        });
+        Invoice::with([
+                'invitations',
+                'invitations.contact.client.country',
+                'invitations.invoice.client.country',
+                'invitations.invoice.company'
+                ])
+                ->withTrashed()
+                ->whereIn('id', $this->invoice_ids)
+                ->cursor()
+                ->each(function ($invoice) {
 
-        if ($this->invoice->invitations->count() >= 1) {
-            $this->invoice->entityEmailEvent($this->invoice->invitations->first(), 'invoice', $this->reminder_template);
-        }
+                    $invoice->service()->markSent()->save();
+
+                    $invoice->invitations->each(function ($invitation) {
+
+                        $template = $this->resolveTemplateString($this->reminder_template);
+
+                        if ($invitation->contact->email && !$invitation->contact->is_locked) {
+                            $this->contact_has_email = true;
+
+                            $mo = new EmailObject();
+                            $mo->entity_id = $invitation->invoice_id;
+                            $mo->template = $template; //full template name in use
+                            $mo->email_template_body = $template;
+                            $mo->email_template_subject = str_replace("template", "subject", $template);
+
+                            $mo->entity_class = get_class($invitation->invoice);
+                            $mo->invitation_id = $invitation->id;
+                            $mo->client_id = $invitation->contact->client_id ?? null;
+                            $mo->vendor_id = $invitation->contact->vendor_id ?? null;
+
+                            Email::dispatch($mo, $invitation->company->withoutRelations());
+
+                            sleep(1); // this is needed to slow down the amount of data that is pushed into cache
+                        }
+                    });
+
+                    if ($invoice->invitations->count() >= 1 && $this->contact_has_email) {
+                        $invoice->entityEmailEvent($invoice->invitations->first(), 'invoice', $this->reminder_template);
+                        $invoice->sendEvent(Webhook::EVENT_SENT_INVOICE, "client");
+                    }
+
+                    sleep(1); // this is needed to slow down the amount of data that is pushed into cache
+                    $this->contact_has_email = false;
+                });
+    }
+
+    private function resolveTemplateString(string $template): string
+    {
+
+        return match ($template) {
+            'reminder1' => 'email_template_reminder1',
+            'reminder2' => 'email_template_reminder2',
+            'reminder3' => 'email_template_reminder3',
+            'endless_reminder' => 'email_template_reminder_endless',
+            'custom1' => 'email_template_custom1',
+            'custom2' => 'email_template_custom2',
+            'custom3' => 'email_template_custom3',
+            default => "email_template_{$template}",
+        };
+
     }
 }

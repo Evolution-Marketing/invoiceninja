@@ -25,6 +25,29 @@ class Google implements ProviderInterface
 
     public function harvestName($payload)
     {
-        return $payload['name'];
+        return $payload['name'] ?? 'unknown name';
+    }
+
+    public function harvestUser($access_token)
+    {
+        $client = new Google_Client();
+        $client->setClientId(config('ninja.auth.google.client_id'));
+        $client->setClientSecret(config('ninja.auth.google.client_secret'));
+        $client->setAccessToken($access_token);
+
+        $oauth2 = new \Google_Service_Oauth2($client);
+
+        try {
+            $userInfo = $oauth2->userinfo->get();
+        } catch (\Exception $e) {
+            return false;
+        }
+
+        return [
+            'email' => $userInfo['email'],
+            'sub' => $userInfo['id'],
+            'name' => $userInfo['name'],
+        ];
+
     }
 }

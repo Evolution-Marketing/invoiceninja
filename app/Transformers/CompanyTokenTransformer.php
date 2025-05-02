@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -24,13 +25,13 @@ class CompanyTokenTransformer extends EntityTransformer
     /**
      * @var array
      */
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
     ];
 
     /**
@@ -45,7 +46,7 @@ class CompanyTokenTransformer extends EntityTransformer
             'user_id' => $this->encodePrimaryKey($company_token->user_id),
             'token' => $company_token->token,
             'name' => $company_token->name ?: '',
-            'is_system' =>(bool) $company_token->is_system,
+            'is_system' => (bool) $company_token->is_system,
             'updated_at' => (int) $company_token->updated_at,
             'archived_at' => (int) $company_token->deleted_at,
             'created_at' => (int) $company_token->created_at,

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,12 +14,11 @@ namespace App\Http\Requests\RecurringInvoice;
 
 use App\Http\Requests\Request;
 use App\Http\ValidationRules\Project\ValidProjectForClient;
-use App\Http\ValidationRules\Recurring\UniqueRecurringInvoiceNumberRule;
 use App\Models\Client;
 use App\Models\RecurringInvoice;
 use App\Utils\Traits\CleanLineItems;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\Rule;
 
 class StoreRecurringInvoiceRequest extends Request
 {
@@ -30,34 +30,50 @@ class StoreRecurringInvoiceRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', RecurringInvoice::class);
+
+        /** @var \App\Models\User auth()->user() */
+        $user = auth()->user();
+
+        return $user->can('create', RecurringInvoice::class);
     }
 
     public function rules()
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $rules = [];
 
-        if ($this->input('documents') && is_array($this->input('documents'))) {
-            $documents = count($this->input('documents'));
+        $rules['file'] = 'bail|sometimes|array';
+        $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
-            foreach (range(0, $documents) as $index) {
-                $rules['documents.'.$index] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-            }
-        } elseif ($this->input('documents')) {
-            $rules['documents'] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-        }
+        $rules['client_id'] = 'required|exists:clients,id,company_id,'.$user->company()->id;
 
-        $rules['client_id'] = 'required|exists:clients,id,company_id,'.auth()->user()->company()->id;
-
-        $rules['invitations.*.client_contact_id'] = 'distinct';
+        $rules['invitations'] = 'sometimes|bail|array';
+        $rules['invitations.*.client_contact_id'] = 'bail|required|distinct';
 
         $rules['frequency_id'] = 'required|integer|digits_between:1,12';
 
         $rules['project_id'] = ['bail', 'sometimes', new ValidProjectForClient($this->all())];
 
-        $rules['number'] = new UniqueRecurringInvoiceNumberRule($this->all());
+        $rules['number'] = ['bail', 'nullable', \Illuminate\Validation\Rule::unique('recurring_invoices')->where('company_id', $user->company()->id)];
+
+        $rules['tax_rate1'] = 'bail|sometimes|numeric';
+        $rules['tax_rate2'] = 'bail|sometimes|numeric';
+        $rules['tax_rate3'] = 'bail|sometimes|numeric';
+        $rules['tax_name1'] = 'bail|sometimes|string|nullable';
+        $rules['tax_name2'] = 'bail|sometimes|string|nullable';
+        $rules['tax_name3'] = 'bail|sometimes|string|nullable';
+        $rules['due_date_days'] = 'bail|sometimes|string';
+        $rules['exchange_rate'] = 'bail|sometimes|numeric';
+        $rules['next_send_date'] = 'bail|required|date|after:yesterday';
+        $rules['amount'] = ['sometimes', 'bail', 'numeric', 'max:99999999999999'];
+        $rules['location_id'] = ['nullable', 'sometimes','bail', Rule::exists('locations', 'id')->where('company_id', $user->company()->id)->where('client_id', $this->client_id)];
+        $rules['vendor_id'] = ['nullable', 'sometimes','bail', Rule::exists('vendors', 'id')->where('company_id', $user->company()->id)];
 
         return $rules;
     }
@@ -65,6 +81,25 @@ class StoreRecurringInvoiceRequest extends Request
     public function prepareForValidation()
     {
         $input = $this->all();
+        $input['amount'] = 0;
+        $input['balance'] = 0;
+
+        if ($this->file('documents') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('documents', [$this->file('documents')]);
+        }
+
+        if ($this->file('file') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('file', [$this->file('file')]);
+        }
+
+
+        if (array_key_exists('due_date_days', $input) && is_null($input['due_date_days'])) {
+            $input['due_date_days'] = 'terms';
+        }
+
+        if (!isset($input['next_send_date']) || $input['next_send_date'] == '') {
+            $input['next_send_date'] = now()->format('Y-m-d');
+        }
 
         if (array_key_exists('next_send_date', $input) && is_string($input['next_send_date'])) {
             $input['next_send_date_client'] = $input['next_send_date'];
@@ -115,11 +150,15 @@ class StoreRecurringInvoiceRequest extends Request
         }
 
         $input['line_items'] = isset($input['line_items']) ? $this->cleanItems($input['line_items']) : [];
+        $input['line_items'] = $this->cleanFeeItems($input['line_items']);
+
+        $input['amount'] = $this->entityTotalAmount($input['line_items']);
 
         if (isset($input['auto_bill'])) {
             $input['auto_bill_enabled'] = $this->setAutoBillFlag($input['auto_bill']);
         } else {
-            if (array_key_exists('client_id', $input) && $client = Client::find($input['client_id'])) {
+            if (array_key_exists('client_id', $input) && $client = Client::query()->find($input['client_id'])) {
+                /** @var \App\Models\Client $client */
                 $input['auto_bill'] = $client->getSetting('auto_bill');
                 $input['auto_bill_enabled'] = $this->setAutoBillFlag($input['auto_bill']);
             }
@@ -128,6 +167,10 @@ class StoreRecurringInvoiceRequest extends Request
         /* If there is no number, just unset it here. */
         if (array_key_exists('number', $input) && (is_null($input['number']) || empty($input['number']))) {
             unset($input['number']);
+        }
+
+        if (array_key_exists('exchange_rate', $input) && (is_null($input['exchange_rate']) || $input['exchange_rate'] == 0)) {
+            $input['exchange_rate'] = 1;
         }
 
         $this->replace($input);

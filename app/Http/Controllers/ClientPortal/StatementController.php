@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -23,7 +23,7 @@ class StatementController extends Controller
     /**
      * Show the statement in the client portal.
      *
-     * @return View
+     * @return \Illuminate\View\View
      */
     public function index(): View
     {
@@ -39,7 +39,7 @@ class StatementController extends Controller
     public function raw(ShowStatementRequest $request)
     {
         $pdf = $request->client()->service()->statement(
-            $request->only(['start_date', 'end_date', 'show_payments_table', 'show_aging_table', 'status'])
+            $request->only(['start_date', 'end_date', 'show_payments_table', 'show_aging_table', 'show_credits_table', 'status'])
         );
 
         if ($pdf && $request->query('download')) {

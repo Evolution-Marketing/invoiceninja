@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,14 +15,8 @@ namespace App\Services\Client;
 use App\Factory\CompanyLedgerFactory;
 use App\Models\Activity;
 use App\Models\Client;
-use App\Models\CompanyGateway;
 use App\Models\CompanyLedger;
-use App\Models\GatewayType;
-use App\Models\Invoice;
-use App\Models\Payment;
 use App\Services\AbstractService;
-use App\Utils\Ninja;
-use App\Utils\Traits\MakesHash;
 
 class Merge extends AbstractService
 {
@@ -37,9 +32,16 @@ class Merge extends AbstractService
 
     public function run()
     {
+        nlog("merging {$this->mergable_client->id} into {$this->client->id}");
+        nlog("balance pre {$this->client->balance}");
+        nlog("paid_to_date pre {$this->client->paid_to_date}");
+
         $this->client->balance += $this->mergable_client->balance;
         $this->client->paid_to_date += $this->mergable_client->paid_to_date;
         $this->client->save();
+
+        nlog("balance post {$this->client->balance}");
+        nlog("paid_to_date post {$this->client->paid_to_date}");
 
         $this->updateLedger($this->mergable_client->balance);
 
@@ -53,13 +55,14 @@ class Merge extends AbstractService
         $this->mergable_client->projects()->update(['client_id' => $this->client->id]);
         $this->mergable_client->quotes()->update(['client_id' => $this->client->id]);
         $this->mergable_client->recurring_invoices()->update(['client_id' => $this->client->id]);
+        $this->mergable_client->recurring_expenses()->update(['client_id' => $this->client->id]);
         $this->mergable_client->tasks()->update(['client_id' => $this->client->id]);
         $this->mergable_client->documents()->update(['documentable_id' => $this->client->id]);
 
         /* Loop through contacts an only merge distinct contacts by email */
         $this->mergable_client->contacts->each(function ($contact) {
             $exist = $this->client->contacts->contains(function ($client_contact) use ($contact) {
-                return $client_contact->email == $contact->email;
+                return $client_contact->email == $contact->email || empty($contact->email) || $contact->email == ' ';
             });
 
             if ($exist) {
@@ -70,6 +73,9 @@ class Merge extends AbstractService
 
         $this->mergable_client->forceDelete();
 
+        $this->client->credit_balance = $this->client->service()->getCreditBalance();
+        $this->client->saveQuietly();
+
         return $this->client;
     }
 
@@ -77,7 +83,7 @@ class Merge extends AbstractService
     {
         $balance = 0;
 
-        $company_ledger = CompanyLedger::whereClientId($this->client->id)
+        $company_ledger = CompanyLedger::query()->whereClientId($this->client->id)
                                 ->orderBy('id', 'DESC')
                                 ->first();
 

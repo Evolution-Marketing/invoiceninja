@@ -17,15 +17,15 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Listeners\Payment\PaymentNotification
+ * 
+ *  App\Listeners\Payment\PaymentNotification
  */
 class GoogleAnalyticsTest extends TestCase
 {
     use MockAccountData;
     use DatabaseTransactions;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -34,7 +34,6 @@ class GoogleAnalyticsTest extends TestCase
 
     public function testGoogleAnalyticsLogic()
     {
-        $this->withoutEvents();
 
         $analytics_id = 'analytics_id';
         $invoice = $this->invoice;

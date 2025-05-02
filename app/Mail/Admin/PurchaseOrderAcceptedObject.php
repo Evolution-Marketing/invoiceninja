@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -21,16 +22,8 @@ use stdClass;
 
 class PurchaseOrderAcceptedObject
 {
-    public $purchase_order;
-
-    public $company;
-
-    public $settings;
-
-    public function __construct(PurchaseOrder $purchase_order, Company $company)
+    public function __construct(public PurchaseOrder $purchase_order, public Company $company, protected bool $use_react_url)
     {
-        $this->purchase_order = $purchase_order;
-        $this->company = $company;
     }
 
     public function build()
@@ -49,12 +42,13 @@ class PurchaseOrderAcceptedObject
         /* Set customized translations _NOW_ */
         $t->replace(Ninja::transformTranslations($this->company->settings));
 
-        $mail_obj = new stdClass;
+        $mail_obj = new stdClass();
         $mail_obj->amount = $this->getAmount();
         $mail_obj->subject = $this->getSubject();
         $mail_obj->data = $this->getData();
         $mail_obj->markdown = 'email.admin.generic';
         $mail_obj->tag = $this->company->company_key;
+        $mail_obj->text_view = 'email.template.text';
 
         return $mail_obj;
     }
@@ -80,22 +74,26 @@ class PurchaseOrderAcceptedObject
     {
         $settings = $this->company->settings;
 
-        $data = [
-            'title' => $this->getSubject(),
-            'message' => ctrans(
-                'texts.notification_purchase_order_accepted',
-                [
+        $content = ctrans(
+            'texts.notification_purchase_order_accepted',
+            [
                     'amount' => $this->getAmount(),
                     'vendor' => $this->purchase_order->vendor->present()->name(),
                     'purchase_order' => $this->purchase_order->number,
                 ]
-            ),
-            'url' => $this->purchase_order->invitations->first()->getAdminLink(),
+        );
+
+        $data = [
+            'title' => $this->getSubject(),
+            'content' => $content,
+            'url' => $this->purchase_order->invitations->first()->getAdminLink($this->use_react_url),
             'button' => ctrans('texts.view_purchase_order'),
             'signature' => $settings->email_signature,
             'logo' => $this->company->present()->logo(),
             'settings' => $settings,
             'whitelabel' => $this->company->account->isPaid() ? true : false,
+            'text_body' => $content,
+            'template' => $this->company->account->isPremium() ? 'email.template.admin_premium' : 'email.template.admin',
         ];
 
         return $data;

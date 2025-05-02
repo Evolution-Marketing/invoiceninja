@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,7 +17,7 @@ use App\Models\RecurringInvoice;
 
 class RecurringExpenseFactory
 {
-    public static function create(int $company_id, int $user_id) :RecurringExpense
+    public static function create(int $company_id, int $user_id): RecurringExpense
     {
         $recurring_expense = new RecurringExpense();
         $recurring_expense->status_id = RecurringInvoice::STATUS_DRAFT;
@@ -34,7 +35,9 @@ class RecurringExpenseFactory
         $recurring_expense->tax_amount1 = 0;
         $recurring_expense->tax_amount2 = 0;
         $recurring_expense->tax_amount3 = 0;
-        $recurring_expense->date = null;
+        $recurring_expense->date = now()->format('Y-m-d');
+        $recurring_expense->next_send_date = now()->format('Y-m-d');
+        $recurring_expense->next_send_date_client = now()->format('Y-m-d');
         $recurring_expense->payment_date = null;
         $recurring_expense->amount = 0;
         $recurring_expense->foreign_amount = 0;
@@ -47,6 +50,7 @@ class RecurringExpenseFactory
         $recurring_expense->custom_value4 = '';
         $recurring_expense->uses_inclusive_taxes = true;
         $recurring_expense->calculate_tax_by_amount = true;
+        $recurring_expense->remaining_cycles = -1;
 
         return $recurring_expense;
     }

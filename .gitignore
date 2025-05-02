@@ -4,7 +4,10 @@
 /public/react
 /storage/*.key
 /storage/debugbar
+/storage/*
+/tests/bootstrap/
 /vendor
+/app/Console/Commands/vendor/
 /.idea
 /.vscode
 /.vagrant
@@ -16,10 +19,12 @@ yarn-error.log
 local_version.txt
 .env
 .phpunit.result.cache
+_ide_helper.php
 
 /resources/assets/bower
 /public/logo
 .env.dusk.local
+.env.cypress
 /public/vendors/*
 *.log
 
@@ -31,3 +36,8 @@ nbproject
 public/test.pdf
 public/storage/test.pdf
 /Modules
+_ide_helper_models.php
+_ide_helper.php
+/composer.phar
+.tx/
+.phpunit.cache

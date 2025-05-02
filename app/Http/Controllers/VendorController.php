@@ -1,38 +1,39 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
-use App\Events\Vendor\VendorWasCreated;
-use App\Events\Vendor\VendorWasUpdated;
+use App\Utils\Ninja;
+use App\Models\Vendor;
+use App\Models\Account;
+use Illuminate\Http\Response;
 use App\Factory\VendorFactory;
 use App\Filters\VendorFilters;
-use App\Http\Requests\Vendor\CreateVendorRequest;
-use App\Http\Requests\Vendor\DestroyVendorRequest;
+use App\Utils\Traits\MakesHash;
+use App\Utils\Traits\Uploadable;
+use App\Utils\Traits\BulkOptions;
+use App\Utils\Traits\SavesDocuments;
+use App\Repositories\VendorRepository;
+use App\Events\Vendor\VendorWasCreated;
+use App\Events\Vendor\VendorWasUpdated;
+use App\Transformers\VendorTransformer;
 use App\Http\Requests\Vendor\EditVendorRequest;
 use App\Http\Requests\Vendor\ShowVendorRequest;
+use App\Http\Requests\Vendor\PurgeVendorRequest;
 use App\Http\Requests\Vendor\StoreVendorRequest;
+use App\Http\Requests\Vendor\CreateVendorRequest;
 use App\Http\Requests\Vendor\UpdateVendorRequest;
 use App\Http\Requests\Vendor\UploadVendorRequest;
-use App\Models\Account;
-use App\Models\Vendor;
-use App\Repositories\VendorRepository;
-use App\Transformers\VendorTransformer;
-use App\Utils\Ninja;
-use App\Utils\Traits\BulkOptions;
-use App\Utils\Traits\MakesHash;
-use App\Utils\Traits\SavesDocuments;
-use App\Utils\Traits\Uploadable;
-use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use App\Http\Requests\Vendor\DestroyVendorRequest;
 
 /**
  * Class VendorController.
@@ -49,7 +50,7 @@ class VendorController extends BaseController
     protected $entity_transformer = VendorTransformer::class;
 
     /**
-     * @var Vendorepository
+     * @var VendorRepository
      */
     protected $vendor_repo;
 
@@ -73,8 +74,7 @@ class VendorController extends BaseController
      *      description="Lists vendors, search and filters allow fine grained lists to be generated.
 
     Query parameters can be added to performed more fine grained filtering of the vendors, these are handled by the VendorFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -98,7 +98,7 @@ class VendorController extends BaseController
      *       ),
      *     )
      * @param VendorFilters $filters
-     * @return Response|mixed
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function index(VendorFilters $filters)
     {
@@ -112,7 +112,7 @@ class VendorController extends BaseController
      *
      * @param ShowVendorRequest $request
      * @param Vendor $vendor
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -121,8 +121,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Shows a client",
      *      description="Displays a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -167,7 +166,7 @@ class VendorController extends BaseController
      *
      * @param EditVendorRequest $request
      * @param Vendor $vendor
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -176,8 +175,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Shows a client for editting",
      *      description="Displays a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -222,7 +220,7 @@ class VendorController extends BaseController
      *
      * @param UpdateVendorRequest $request
      * @param Vendor $vendor
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -232,8 +230,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Updates a client",
      *      description="Handles the updating of a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -280,6 +277,8 @@ class VendorController extends BaseController
 
         event(new VendorWasUpdated($vendor, $vendor->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
 
+        event('eloquent.updated: App\Models\Vendor', $vendor);
+
         return $this->itemResponse($vendor->fresh());
     }
 
@@ -287,7 +286,7 @@ class VendorController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateVendorRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -297,8 +296,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Gets a new blank client object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -324,7 +322,11 @@ class VendorController extends BaseController
      */
     public function create(CreateVendorRequest $request)
     {
-        $vendor = VendorFactory::create(auth()->user()->company()->id, auth()->user()->id);
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $vendor = VendorFactory::create($user->company()->id, auth()->user()->id);
 
         return $this->itemResponse($vendor);
     }
@@ -333,7 +335,7 @@ class VendorController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreVendorRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -343,8 +345,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Adds a client",
      *      description="Adds an client to a company",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -370,13 +371,19 @@ class VendorController extends BaseController
      */
     public function store(StoreVendorRequest $request)
     {
-        $vendor = $this->vendor_repo->save($request->all(), VendorFactory::create(auth()->user()->company()->id, auth()->user()->id));
+
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $vendor = $this->vendor_repo->save($request->all(), VendorFactory::create($user->company()->id, auth()->user()->id));
 
         $vendor->load('contacts', 'primary_contact');
 
         $this->uploadLogo($request->file('company_logo'), $vendor->company, $vendor);
 
         event(new VendorWasCreated($vendor, $vendor->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
+
+        event('eloquent.created: App\Models\Vendor', $vendor);
 
         return $this->itemResponse($vendor);
     }
@@ -386,7 +393,7 @@ class VendorController extends BaseController
      *
      * @param DestroyVendorRequest $request
      * @param Vendor $vendor
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -396,8 +403,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Deletes a client",
      *      description="Handles the deletion of a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -442,7 +448,7 @@ class VendorController extends BaseController
     /**
      * Perform bulk actions on the list view.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Post(
@@ -451,8 +457,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Performs bulk actions on an array of vendors",
      *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
      *      @OA\RequestBody(
@@ -497,8 +502,11 @@ class VendorController extends BaseController
         $ids = request()->input('ids');
         $vendors = Vendor::withTrashed()->find($this->transformKeys($ids));
 
-        $vendors->each(function ($vendor, $key) use ($action) {
-            if (auth()->user()->can('edit', $vendor)) {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $vendors->each(function ($vendor, $key) use ($action, $user) {
+            if ($user->can('edit', $vendor)) {
                 $this->vendor_repo->{$action}($vendor);
             }
         });
@@ -521,7 +529,7 @@ class VendorController extends BaseController
      *
      * @param UploadVendorRequest $request
      * @param Vendor $vendor
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -531,8 +539,7 @@ class VendorController extends BaseController
      *      tags={"vendors"},
      *      summary="Uploads a document to a vendor",
      *      description="Handles the uploading of a document to a vendor",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -574,9 +581,43 @@ class VendorController extends BaseController
         }
 
         if ($request->has('documents')) {
-            $this->saveDocuments($request->file('documents'), $vendor);
+            $this->saveDocuments($request->file('documents'), $vendor, $request->input('is_public', true));
         }
 
         return $this->itemResponse($vendor->fresh());
+    }
+
+
+    /**
+        * Update the specified resource in storage.
+        *
+        * @param PurgeVendorRequest $request
+        * @param Vendor $vendor
+        * @param string $mergeable_vendor
+        * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\Response
+        *
+        */
+
+    public function merge(PurgeVendorRequest $request, Vendor $vendor, string $mergeable_vendor)
+    {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $m_vendor = Vendor::withTrashed()
+                            ->where('id', $this->decodePrimaryKey($mergeable_vendor))
+                            ->where('company_id', $user->company()->id)
+                            ->first();
+
+        if (!$m_vendor) {
+            return response()->json(['message' => "Vendor not found"], 400);
+        }
+
+        if ($m_vendor->id == $vendor->id) {
+            return response()->json(['message' => "Attempting to merge the same vendor is not possible."], 400);
+        }
+
+        $merged_vendor = $vendor->service()->merge($m_vendor)->save();
+
+        return $this->itemResponse($merged_vendor);
     }
 }

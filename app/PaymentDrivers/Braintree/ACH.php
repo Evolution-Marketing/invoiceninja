@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,19 +13,23 @@
 namespace App\PaymentDrivers\Braintree;
 
 use App\Exceptions\PaymentFailed;
+use App\Http\Controllers\ClientPortal\InvoiceController;
+use App\Http\Requests\ClientPortal\Invoices\ProcessInvoicesInBulkRequest;
 use App\Http\Requests\ClientPortal\Payments\PaymentResponseRequest;
 use App\Jobs\Util\SystemLogger;
 use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Payment;
+use App\Models\PaymentHash;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
 use App\PaymentDrivers\BraintreePaymentDriver;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\Common\MethodInterface;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Http\Request;
 
-class ACH implements MethodInterface
+class ACH implements MethodInterface, LivewireMethodInterface
 {
     use MakesHash;
 
@@ -39,8 +44,14 @@ class ACH implements MethodInterface
 
     public function authorizeView(array $data)
     {
-        $data['gateway'] = $this->braintree;
-        $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
+        try {
+            $data['gateway'] = $this->braintree;
+            $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
+        } catch (\Exception $e) {
+
+            throw new PaymentFailed("Unable to generate client token, check your Braintree credentials. Error: " . $e->getMessage(), 500);
+
+        }
 
         return render('gateways.braintree.ach.authorize', $data);
     }
@@ -66,7 +77,7 @@ class ACH implements MethodInterface
             $account = $result->paymentMethod;
 
             try {
-                $payment_meta = new \stdClass;
+                $payment_meta = new \stdClass();
                 $payment_meta->brand = (string) $account->bankName;
                 $payment_meta->last4 = (string) $account->last4;
                 $payment_meta->type = GatewayType::BANK_TRANSFER;
@@ -80,6 +91,22 @@ class ACH implements MethodInterface
 
                 $this->braintree->storeGatewayToken($data, ['gateway_customer_reference' => $customer->id]);
 
+                if ($request->authorize_then_redirect) {
+                    $this->braintree->payment_hash = PaymentHash::where('hash', $request->payment_hash)->firstOrFail();
+
+                    $data = [
+                        'invoices' => collect($this->braintree->payment_hash->data->invoices)->map(fn ($invoice) => $invoice->invoice_id)->toArray(),
+                        'action' => 'payment',
+                    ];
+
+                    $request = new ProcessInvoicesInBulkRequest();
+                    $request->replace($data);
+
+                    session()->flash('message', ctrans('texts.payment_method_added'));
+
+                    return app(InvoiceController::class)->bulk($request);
+                }
+
                 return redirect()->route('client.payment_methods.index')->withMessage(ctrans('texts.payment_method_added'));
             } catch (\Exception $e) {
                 return $this->braintree->processInternallyFailedPayment($this->braintree, $e);
@@ -91,10 +118,11 @@ class ACH implements MethodInterface
 
     public function paymentView(array $data)
     {
-        $data['gateway'] = $this->braintree;
-        $data['currency'] = $this->braintree->client->getCurrencyCode();
-        $data['payment_method_id'] = GatewayType::BANK_TRANSFER;
-        $data['amount'] = $this->braintree->payment_hash->data->amount_with_fee;
+        $data = $this->paymentData($data);
+
+        if (array_key_exists('authorize_then_redirect', $data)) {
+            return render('gateways.braintree.ach.authorize', array_merge($data));
+        }
 
         return render('gateways.braintree.ach.pay', $data);
     }
@@ -113,16 +141,23 @@ class ACH implements MethodInterface
             ->where('id', $this->decodePrimaryKey($request->source))
             ->firstOrFail();
 
+        $total_taxes = \App\Models\Invoice::query()->whereIn('id', $this->transformKeys(array_column($this->braintree->payment_hash->invoices(), 'invoice_id')))->withTrashed()->sum('total_taxes');
+        $invoice = $this->braintree->payment_hash->fee_invoice;
+        $po_number = $invoice->po_number ?? $invoice->number ?? '';
+
         $result = $this->braintree->gateway->transaction()->sale([
             'amount' => $this->braintree->payment_hash->data->amount_with_fee,
             'paymentMethodToken' => $token->token,
+            'channel' => 'invoiceninja_BT',
             'options' => [
                 'submitForSettlement' => true,
             ],
+            'taxAmount' => $total_taxes,
+            'purchaseOrderNumber' => substr($po_number, 0, 16),
         ]);
 
         if ($result->success) {
-            $this->braintree->logSuccessfulGatewayResponse(['response' => $request->server_response, 'data' => $this->braintree->payment_hash], SystemLog::TYPE_BRAINTREE);
+            $this->braintree->logSuccessfulGatewayResponse(['response' => $request->server_response, 'data' => $this->braintree->payment_hash->data], SystemLog::TYPE_BRAINTREE);
 
             return $this->processSuccessfulPayment($result);
         }
@@ -174,5 +209,35 @@ class ACH implements MethodInterface
         );
 
         throw new PaymentFailed($response->transaction->additionalProcessorResponse, $response->transaction->processorResponseCode);
+    }
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        if (array_key_exists('authorize_then_redirect', $data)) {
+            return 'gateways.braintree.ach.authorize_livewire';
+        }
+
+        return 'gateways.braintree.ach.pay_livewire';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $data['gateway'] = $this->braintree;
+        $data['currency'] = $this->braintree->client->getCurrencyCode();
+        $data['payment_method_id'] = GatewayType::BANK_TRANSFER;
+        $data['amount'] = $this->braintree->payment_hash->data->amount_with_fee;
+        $data['client_token'] = $this->braintree->gateway->clientToken()->generate();
+        $data['payment_hash'] = $this->braintree->payment_hash->hash;
+
+        if (count($data['tokens']) === 0) {
+            $data['authorize_then_redirect'] = true;
+        }
+
+        return $data;
     }
 }

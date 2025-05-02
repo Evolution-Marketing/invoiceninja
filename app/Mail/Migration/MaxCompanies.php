@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -28,7 +29,7 @@ class MaxCompanies extends Mailable
 
     public $title;
 
-    public $message;
+    // public $message;
 
     public $whitelabel;
 
@@ -54,7 +55,7 @@ class MaxCompanies extends Mailable
         $this->settings = $this->company->settings;
         $this->logo = $this->company->present()->logo();
         $this->title = ctrans('texts.max_companies');
-        $this->message = ctrans('texts.max_companies_desc');
+        // $this->message = ctrans('texts.max_companies_desc');
         $this->whitelabel = $this->company->account->isPaid();
 
         return $this->from(config('mail.from.address'), config('mail.from.name'))

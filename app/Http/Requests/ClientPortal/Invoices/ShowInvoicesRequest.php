@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,7 +19,10 @@ class ShowInvoicesRequest extends FormRequest
 {
     public function authorize()
     {
-        return auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_INVOICES;
+
+        auth()->guard('contact')->user()->loadMissing(['company']);
+
+        return (bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_INVOICES);
     }
 
     public function rules()

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -40,9 +41,8 @@ class ApplyPayment
         $this->payment = $payment->fresh();
     }
 
-    public function run() :Credit
+    public function run(): Credit
     {
-
         //$available_credit_balance = $this->credit->balance;
         $applicable_amount = min($this->amount, $this->credit->balance);
         $invoice_balance = $this->invoice->balance;
@@ -87,7 +87,7 @@ class ApplyPayment
 
     private function applyPaymentToCredit()
     {
-        $credit_item = new InvoiceItem;
+        $credit_item = new InvoiceItem();
         $credit_item->type_id = '1';
         $credit_item->product_key = ctrans('texts.credit');
         $credit_item->notes = ctrans('texts.credit_payment', ['invoice_number' => $this->invoice->number]);
@@ -105,8 +105,8 @@ class ApplyPayment
 
     private function addPaymentToLedger()
     {
-        $this->payment->amount += $this->amount_applied;
-        $this->payment->applied += $this->amount_applied;
+        // $this->payment->amount += $this->amount_applied;
+        // $this->payment->applied += $this->amount_applied;
         $this->payment->status_id = Payment::STATUS_COMPLETED;
         $this->payment->currency_id = $this->credit->client->getSetting('currency_id');
         $this->payment->save();
@@ -121,9 +121,9 @@ class ApplyPayment
              ->credits()
              ->attach($this->credit->id, ['amount' => $this->amount_applied]);
 
-        $this->payment
-                 ->ledger()
-                 ->updatePaymentBalance($this->amount_applied * -1);
+        // $this->payment
+        //          ->ledger()
+        //          ->updatePaymentBalance($this->amount_applied * -1, "ApplyPaymentCredit"); // this duplicated the company ledger paid to date amount.
 
         $this->payment
                  ->client
@@ -147,7 +147,6 @@ class ApplyPayment
         event(new InvoiceWasUpdated($this->invoice, $this->invoice->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
 
         if ((int) $this->invoice->balance == 0) {
-            $this->invoice->service()->deletePdf();
             $this->invoice = $this->invoice->fresh();
             event(new InvoiceWasPaid($this->invoice, $this->payment, $this->payment->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
         }

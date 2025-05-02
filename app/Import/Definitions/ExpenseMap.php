@@ -1,10 +1,11 @@
 <?php
+
 /**
- * client Ninja (https://clientninja.com).
+ * Invoice Ninja (https://invoiceninja.com).
  *
- * @link https://github.com/clientninja/clientninja source repository
+ * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. client Ninja LLC (https://clientninja.com)
+ * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -36,6 +37,10 @@ class ExpenseMap
             17 => 'expense.tax_rate3',
             18 => 'expense.uses_inclusive_taxes',
             19 => 'expense.payment_date',
+            20 => 'expense.custom_value1',
+            21 => 'expense.custom_value2',
+            22 => 'expense.custom_value3',
+            23 => 'expense.custom_value4',
 
         ];
     }
@@ -63,6 +68,10 @@ class ExpenseMap
             17 => 'texts.tax_rate3',
             18 => 'texts.uses_inclusive_taxes',
             19 => 'texts.payment_date',
+            20 => 'texts.custom_value1',
+            21 => 'texts.custom_value2',
+            22 => 'texts.custom_value3',
+            23 => 'texts.custom_value4',
 
         ];
     }

@@ -12,8 +12,65 @@ class Payment {
     constructor(displayTerms, displaySignature) {
         this.shouldDisplayTerms = displayTerms;
         this.shouldDisplaySignature = displaySignature;
-        this.termsAccepted = false;
+        
         this.submitting = false;
+        this.steps = new Map()
+
+        this.steps.set("rff", {
+            element: document.getElementById('displayRequiredFieldsModal'),
+            nextButton: document.getElementById('rff-next-step'),
+            callback: () => {
+                const fields = {
+                    firstName: document.querySelector('input[name="rff_first_name"]'),
+                    lastName: document.querySelector('input[name="rff_last_name"]'),
+                    email: document.querySelector('input[name="rff_email"]'),
+                    city: document.querySelector('input[name="rff_city"]'),
+                    postalCode: document.querySelector('input[name="rff_postal_code"]'),
+                }
+
+                if (fields.firstName) {
+                    document.querySelector('input[name="contact_first_name"]').value = fields.firstName.value;
+                }
+
+                if (fields.lastName) {
+                    document.querySelector('input[name="contact_last_name"]').value = fields.lastName.value;
+                }
+
+                if (fields.email) {
+                    document.querySelector('input[name="contact_email"]').value = fields.email.value;
+                }
+
+                if (fields.city) {
+                    document.querySelector('input[name="client_city"]').value = fields.city.value;
+                }
+
+                if (fields.postalCode) {
+                    document.querySelector('input[name="client_postal_code"]').value = fields.postalCode.value;
+                }
+
+            }
+        });
+
+        if (this.shouldDisplaySignature) {
+            this.steps.set("signature", {
+                element: document.getElementById('displaySignatureModal'),
+                nextButton: document.getElementById('signature-next-step'),
+                boot: () => this.signaturePad = new SignaturePad(
+                    document.getElementById("signature-pad"),
+                    {
+                        penColor: "rgb(0, 0, 0)"
+                    }
+                ),
+                callback: () => document.querySelector('input[name="signature"').value = this.signaturePad.toDataURL(),
+            });
+        }
+
+        if (this.shouldDisplayTerms) {
+            this.steps.set("terms", {
+                element: document.getElementById('displayTermsModal'),
+                nextButton: document.getElementById('accept-terms-button'),
+            });
+        }
     }
 
     handleMethodSelect(element) {
@@ -22,54 +79,42 @@ class Payment {
             element.dataset.companyGatewayId;
         document.getElementById("payment_method_id").value =
             element.dataset.gatewayTypeId;
+              
+        const filledRff = document.querySelector('input[name="contact_first_name"').value.length >=1 &&
+            document.querySelector('input[name="contact_last_name"').value.length >= 1 &&
+            document.querySelector('input[name="contact_email"').value.length >= 1 &&
+            document.querySelector('input[name="client_city"').value.length >= 1 &&
+            document.querySelector('input[name="client_postal_code"').value.length >= 1;
 
-        if (this.shouldDisplaySignature && !this.shouldDisplayTerms) {
-
-            if(this.signaturePad && this.signaturePad.isEmpty())
-                alert("Please sign");
-
-            this.displayTerms();
-
-            document
-                .getElementById("accept-terms-button")
-                .addEventListener("click", () => {
-                    this.termsAccepted = true;
-                    this.submitForm();
-                });
+        if (element.dataset.isPaypal != '1' || filledRff) {
+            this.steps.delete("rff");
         }
 
-        if (!this.shouldDisplaySignature && this.shouldDisplayTerms) {
-            this.displaySignature();
-
-            document
-                .getElementById("signature-next-step")
-                .addEventListener("click", () => {
-                    document.querySelector('input[name="signature"').value = this.signaturePad.toDataURL();
-                    this.submitForm();
-                });
+        if (this.steps.size === 0) {
+            return this.submitForm();
         }
 
-        if (this.shouldDisplaySignature && this.shouldDisplayTerms) {
-            this.displaySignature();
+        const next = this.steps.values().next().value;
 
-            document
-                .getElementById("signature-next-step")
-                .addEventListener("click", () => {
-                    this.displayTerms();
-
-                    document
-                        .getElementById("accept-terms-button")
-                        .addEventListener("click", () => {
-                            document.querySelector('input[name="signature"').value = this.signaturePad.toDataURL();
-                            this.termsAccepted = true;
-                            this.submitForm();
-                        });
-                });
+        next.element.removeAttribute("style");
+        
+        if (next.boot) {
+            next.boot();
         }
 
-        if (!this.shouldDisplaySignature && !this.shouldDisplayTerms) {
-            this.submitForm();
-        }
+        console.log(next);
+
+        next.nextButton.addEventListener('click', () => {
+            next.element.setAttribute("style", "display: none;");
+
+            this.steps = new Map(Array.from(this.steps.entries()).slice(1));
+
+            if (next.callback) {
+                next.callback();
+            }
+
+            this.handleMethodSelect(element);
+        });
     }
 
     submitForm() {
@@ -78,33 +123,7 @@ class Payment {
         document.getElementById("payment-form").submit();
     }
 
-    displayTerms() {
-        let displayTermsModal = document.getElementById("displayTermsModal");
-        displayTermsModal.removeAttribute("style");
-    }
-
-    displaySignature() {
-        let displaySignatureModal = document.getElementById(
-            "displaySignatureModal"
-        );
-        displaySignatureModal.removeAttribute("style");
-
-        const signaturePad = new SignaturePad(
-            document.getElementById("signature-pad"),
-            {
-                penColor: "rgb(0, 0, 0)"
-            }
-        );
-
-        signaturePad.onEnd = function(){  
-            document.getElementById("signature-next-step").disabled = false;
-        };
-
-        this.signaturePad = signaturePad;
-    }
-
     handle() {
-        document.getElementById("signature-next-step").disabled = true;
 
         document
             .querySelectorAll(".dropdown-gateway-button")
@@ -124,4 +143,4 @@ const signature = document.querySelector(
 
 const terms = document.querySelector('meta[name="show-invoice-terms"]').content;
 
-new Payment(Boolean(+signature), Boolean(+terms)).handle();
+new Payment(Boolean(+terms), Boolean(+signature)).handle();

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,27 +15,39 @@ namespace App\Transformers;
 use App\Models\Activity;
 use App\Models\Backup;
 use App\Models\Client;
+use App\Models\Credit;
 use App\Models\Document;
 use App\Models\Invoice;
 use App\Models\InvoiceInvitation;
 use App\Models\Payment;
-use App\Transformers\ActivityTransformer;
 use App\Utils\Traits\MakesHash;
 
 class InvoiceTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
         'invitations',
         'documents',
     ];
 
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
         'payments',
         'client',
         'activities',
+        'location',
     ];
+
+    public function includeLocation(Invoice $invoice)
+    {
+        $transformer = new LocationTransformer($this->serializer);
+
+        if (!$invoice->location) {
+            return null;
+        }
+
+        return $this->includeItem($invoice->location, $transformer, \App\Models\Location::class);
+    }
 
     public function includeInvitations(Invoice $invoice)
     {
@@ -64,6 +77,13 @@ class InvoiceTransformer extends EntityTransformer
         return $this->includeCollection($invoice->payments, $transformer, Payment::class);
     }
 
+    public function includeCredits(Invoice $invoice)
+    {
+        $transformer = new CreditTransformer($this->serializer);
+
+        return $this->includeCollection($invoice->credits, $transformer, Credit::class);
+    }
+
     /*
         public function includeExpenses(Invoice $invoice)
         {
@@ -88,7 +108,7 @@ class InvoiceTransformer extends EntityTransformer
 
     public function transform(Invoice $invoice)
     {
-        return [
+        $data = [
             'id' => $this->encodePrimaryKey($invoice->id),
             'user_id' => $this->encodePrimaryKey($invoice->user_id),
             'project_id' => $this->encodePrimaryKey($invoice->project_id),
@@ -97,7 +117,7 @@ class InvoiceTransformer extends EntityTransformer
             'balance' => (float) $invoice->balance,
             'client_id' => (string) $this->encodePrimaryKey($invoice->client_id),
             'vendor_id' => (string) $this->encodePrimaryKey($invoice->vendor_id),
-            'status_id' => (string) ($invoice->status_id ?: 1),
+            'status_id' => (string) ($invoice->status_id ?: '1'),
             'design_id' => (string) $this->encodePrimaryKey($invoice->design_id),
             'recurring_id' => (string) $this->encodePrimaryKey($invoice->recurring_id),
             'created_at' => (int) $invoice->created_at,
@@ -125,7 +145,7 @@ class InvoiceTransformer extends EntityTransformer
             'is_amount_discount' => (bool) ($invoice->is_amount_discount ?: false),
             'footer' => $invoice->footer ?: '',
             'partial' => (float) ($invoice->partial ?: 0.0),
-            'partial_due_date' => $invoice->partial_due_date ?: '',
+            'partial_due_date' => ($invoice->partial_due_date && $invoice->partial_due_date != "-0001-11-30") ? $invoice->partial_due_date->format('Y-m-d') : '',
             'custom_value1' => (string) $invoice->custom_value1 ?: '',
             'custom_value2' => (string) $invoice->custom_value2 ?: '',
             'custom_value3' => (string) $invoice->custom_value3 ?: '',
@@ -150,6 +170,21 @@ class InvoiceTransformer extends EntityTransformer
             'paid_to_date' => (float) $invoice->paid_to_date,
             'subscription_id' => $this->encodePrimaryKey($invoice->subscription_id),
             'auto_bill_enabled' => (bool) $invoice->auto_bill_enabled,
+            'tax_info' => $invoice->tax_data ?: new \stdClass(),
+            'e_invoice' => $invoice->e_invoice ?: new \stdClass(),
+            'backup' => $invoice->backup ?: new \stdClass(),
+            'location_id' => $this->encodePrimaryKey($invoice->location_id),
         ];
+
+        if (request()->has('reminder_schedule') && request()->query('reminder_schedule') == 'true') {
+            $data['reminder_schedule'] = (string) $invoice->reminderSchedule();
+        }
+
+        if (request()->has('is_locked') && request()->query('is_locked') == 'true') {
+            $data['is_locked'] = (bool) $invoice->isLocked();
+        }
+
+        return $data;
+
     }
 }

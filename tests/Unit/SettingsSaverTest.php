@@ -11,18 +11,17 @@
 
 namespace Tests\Unit;
 
-use App\DataMapper\CompanySettings;
 use App\Utils\Traits\SettingsSaver;
 use Tests\TestCase;
 
 /**
- * @test
+ * 
  */
 class SettingsSaverTest extends TestCase
 {
     use SettingsSaver;
 
-    protected function setUp() :void
+    protected function setUp(): void
     {
         parent::setUp();
     }

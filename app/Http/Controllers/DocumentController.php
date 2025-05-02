@@ -13,7 +13,6 @@ use App\Models\Document;
 use App\Repositories\DocumentRepository;
 use App\Transformers\DocumentTransformer;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 class DocumentController extends BaseController
@@ -47,8 +46,7 @@ class DocumentController extends BaseController
      *      description="Lists documents, search and filters allow fine grained lists to be generated.
 
     Query parameters can be added to performed more fine grained filtering of the documents, these are handled by the DocumentsFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -71,8 +69,8 @@ class DocumentController extends BaseController
      *           @OA\JsonContent(ref="#/components/schemas/Error"),
      *       ),
      *     )
-     * @param DocumentsFilters $filters
-     * @return Response|mixed
+     * @param DocumentFilters $filters
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function index(DocumentFilters $filters)
     {
@@ -107,7 +105,7 @@ class DocumentController extends BaseController
      *
      * @param ShowDocumentRequest $request
      * @param Document $document
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function show(ShowDocumentRequest $request, Document $document)
     {
@@ -123,16 +121,17 @@ class DocumentController extends BaseController
         }
 
         return response()->streamDownload(function () use ($document) {
-            echo file_get_contents($document->generateUrl());
+            // echo file_get_contents($document->generateUrl());
+            echo $document->getFile();
         }, basename($document->generateUrl()), $headers);
     }
 
     /**
      * Show the form for editing the specified resource.
      *
-     * @param EditDocumentRegquest $request
+     * @param EditDocumentRequest $request
      * @param Document $document
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function edit(EditDocumentRequest $request, Document $document)
     {
@@ -144,11 +143,18 @@ class DocumentController extends BaseController
      *
      * @param UpdateDocumentRequest $request
      * @param Document $document
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function update(UpdateDocumentRequest $request, Document $document)
     {
-        return $this->itemResponse($document);
+        $document->fill($request->all());
+        $document->save();
+
+        if ($document->documentable) { //@phpstan-ignore-line
+            $document->documentable->touch();
+        }
+
+        return $this->itemResponse($document->fresh());
     }
 
     /**
@@ -156,17 +162,20 @@ class DocumentController extends BaseController
      *
      * @param DestroyDocumentRequest $request
      * @param Document $document
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      */
     public function destroy(DestroyDocumentRequest $request, Document $document)
     {
         $this->document_repo->delete($document);
 
-        return response()->json(['message'=> ctrans('texts.success')]);
+        return response()->json(['message' => ctrans('texts.success')]);
     }
 
     public function bulk()
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $action = request()->input('action');
 
         $ids = request()->input('ids');
@@ -178,15 +187,15 @@ class DocumentController extends BaseController
         }
 
         if ($action == 'download') {
-            ZipDocuments::dispatch($documents->pluck('id'), auth()->user()->company(), auth()->user());
+            ZipDocuments::dispatch($documents->pluck('id'), $user->company(), auth()->user()); //@phpstan-ignore-line
 
             return response()->json(['message' => ctrans('texts.sent_message')], 200);
         }
         /*
          * Send the other actions to the switch
          */
-        $documents->each(function ($document, $key) use ($action) {
-            if (auth()->user()->can('edit', $document)) {
+        $documents->each(function ($document, $key) use ($action, $user) {
+            if ($user->can('edit', $document)) {
                 $this->document_repo->{$action}($document);
             }
         });

@@ -3,12 +3,11 @@
 namespace App\Factory;
 
 use App\Models\PurchaseOrderInvitation;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class PurchaseOrderInvitationFactory
 {
-    public static function create(int $company_id, int $user_id) :PurchaseOrderInvitation
+    public static function create(int $company_id, int $user_id): PurchaseOrderInvitation
     {
         $ci = new PurchaseOrderInvitation();
         $ci->company_id = $company_id;

@@ -1,10 +1,14 @@
 @extends('portal.ninja2020.layout.clean')
 @section('meta_title', ctrans('texts.login'))
 
+@section('head')
+
 @component('portal.ninja2020.components.test')
-    <input type="hidden" id="test_email" value="{{ config('ninja.testvars.username') }}">
-    <input type="hidden" id="test_password" value="{{ config('ninja.testvars.password') }}">
+<input type="hidden" id="test_email" value="{{ config('ninja.testvars.username') }}">
+<input type="hidden" id="test_password" value="{{ config('ninja.testvars.password') }}">
 @endcomponent
+
+@endsection
 
 @section('body')
     <div class="grid lg:grid-cols-3 mx-6 md:mx-0">
@@ -21,7 +25,7 @@
                 @if($account && !$account->isPaid())
                     <div>
                         <img src="{{ asset('images/invoiceninja-black-logo-2.png') }}"
-                             class="border-b border-gray-100 h-18 pb-4" alt="Invoice Ninja logo">
+                             class="border-b border-gray-100 h-18 pb-4" alt="Invoice Ninja logo" id="company_logo">
                     </div>
                 @elseif(isset($company) && !is_null($company))
                     <div>

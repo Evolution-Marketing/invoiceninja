@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -20,20 +20,16 @@ use App\Jobs\Util\SchedulerCheck;
 use App\Jobs\Util\VersionCheck;
 use App\Models\Account;
 use App\Utils\CurlUtils;
-use App\Utils\HostedPDF\NinjaPdf;
 use App\Utils\Ninja;
 use App\Utils\SystemHealth;
 use App\Utils\Traits\AppSetup;
-use Beganovich\Snappdf\Snappdf;
 use Exception;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -47,7 +43,7 @@ class SetupController extends Controller
 
     public function index()
     {
-        $check = SystemHealth::check(false);
+        $check = SystemHealth::check(false, false);
 
         if ($check['system_health'] == true && $check['simple_db_check'] && Schema::hasTable('accounts') && $account = Account::first()) {
             return redirect('/');
@@ -63,7 +59,7 @@ class SetupController extends Controller
     public function doSetup(StoreSetupRequest $request)
     {
         try {
-            $check = SystemHealth::check(false);
+            $check = SystemHealth::check(false, false);
         } catch (Exception $e) {
             nlog(['message' => $e->getMessage(), 'action' => 'SetupController::doSetup()']);
 
@@ -74,7 +70,7 @@ class SetupController extends Controller
             return response('Oops, something went wrong. Check your logs.'); /* We should never reach this block, but just in case. */
         }
 
-        $mail_driver = $request->input('mail_driver');
+        $mail_driver = $request->input('mail_driver', 'smtp');
 
         $url = $request->input('url');
         $db_host = $request->input('db_host');
@@ -82,7 +78,7 @@ class SetupController extends Controller
         $db_database = $request->input('db_database');
         $db_username = $request->input('db_username');
         $db_password = $request->input('db_password');
-        $mail_port = $request->input('mail_port');
+        $mail_port = $request->input('mail_port', 0);
         $encryption = $request->input('encryption');
         $mail_host = $request->input('mail_host');
         $mail_username = $request->input('mail_username');
@@ -125,6 +121,18 @@ class SetupController extends Controller
             unset($env_values['DB_DATABASE']);
             unset($env_values['DB_USERNAME']);
             unset($env_values['DB_PASSWORD']);
+        } else {
+
+            config(['database.connections.mysql.host' => $request->input('db_host')]);
+            config(['database.connections.mysql.port' => $request->input('db_port')]);
+            config(['database.connections.mysql.database' => $request->input('db_database')]);
+            config(['database.connections.mysql.username' => $request->input('db_username')]);
+            config(['database.connections.mysql.password' => $request->input('db_password')]);
+            config(['database.default' => 'mysql']);
+
+            DB::purge('mysql');
+            /* Make sure no stale connections are cached */
+
         }
 
         try {
@@ -135,11 +143,13 @@ class SetupController extends Controller
             /* We need this in some environments that do not have STDIN defined */
             define('STDIN', fopen('php://stdin', 'r'));
 
-            /* Make sure no stale connections are cached */
-            DB::purge('mysql');
-            Artisan::call('optimize');
+            Artisan::call('config:clear');
+
+            Artisan::call('key:generate', ['--force' => true]);
+
             Artisan::call('migrate', ['--force' => true]);
             Artisan::call('db:seed', ['--force' => true]);
+            Artisan::call('config:clear');
 
             Storage::disk('local')->delete('test.pdf');
 
@@ -150,12 +160,12 @@ class SetupController extends Controller
 
             (new VersionCheck())->handle();
 
-            $this->buildCache(true);
-
             return redirect('/');
         } catch (Exception $e) {
             nlog($e->getMessage());
             info($e->getMessage());
+
+            echo $e->getMessage();
 
             return redirect()
                 ->back()
@@ -171,6 +181,7 @@ class SetupController extends Controller
      */
     public function checkDB(CheckDatabaseRequest $request)
     {
+
         try {
             $status = SystemHealth::dbCheck($request);
 
@@ -180,6 +191,8 @@ class SetupController extends Controller
 
             return response($status, 400);
         } catch (Exception $e) {
+            nlog("failed?");
+            nlog($e->getMessage());
             nlog(['message' => $e->getMessage(), 'action' => 'SetupController::checkDB()']);
 
             return response()->json(['message' => $e->getMessage()], 400);
@@ -212,52 +225,10 @@ class SetupController extends Controller
     public function checkPdf(Request $request)
     {
         try {
-
-            // if (config('ninja.pdf_generator') == 'phantom') {
-            //     return $this->testPhantom();
-            // }
-
-            // $pdf = new Snappdf();
-
-            // if (config('ninja.snappdf_chromium_path')) {
-            //     $pdf->setChromiumPath(config('ninja.snappdf_chromium_path'));
-            // }
-
-            // if (config('ninja.snappdf_chromium_arguments')) {
-            //     $pdf->clearChromiumArguments();
-            //     $pdf->addChromiumArguments(config('ninja.snappdf_chromium_arguments'));
-            // }
-
-            // $pdf = $pdf
-            //     ->setHtml('GENERATING PDFs WORKS! Thank you for using Invoice Ninja!')
-            //     ->generate();
-
-            // Storage::disk(config('filesystems.default'))->put('test.pdf', $pdf);
-            // Storage::disk('local')->put('test.pdf', $pdf);
             return response(['url' => ''], 200);
-
-            // return response(['url' => Storage::disk('local')->url('test.pdf')], 200);
         } catch (Exception $e) {
             nlog($e->getMessage());
 
-            return response([], 500);
-        }
-    }
-
-    private function testPhantom()
-    {
-        try {
-            $key = config('ninja.phantomjs_key');
-            $url = 'https://www.invoiceninja.org/';
-
-            $phantom_url = "https://phantomjscloud.com/api/browser/v2/{$key}/?request=%7Burl:%22{$url}%22,renderType:%22pdf%22%7D";
-            $pdf = CurlUtils::get($phantom_url);
-
-            Storage::disk(config('filesystems.default'))->put('test.pdf', $pdf);
-            Storage::disk('local')->put('test.pdf', $pdf);
-
-            return response(['url' => Storage::disk('local')->url('test.pdf')], 200);
-        } catch (Exception $e) {
             return response([], 500);
         }
     }
@@ -309,12 +280,13 @@ class SetupController extends Controller
         Artisan::call('clear-compiled');
         Artisan::call('route:clear');
         Artisan::call('view:clear');
-        Artisan::call('optimize');
+        Artisan::call('config:clear');
+
+        // Artisan::call('optimize');
 
         Artisan::call('migrate', ['--force' => true]);
         Artisan::call('db:seed', ['--force' => true]);
-
-        $this->buildCache(true);
+        Artisan::call('cache:clear');
 
         (new SchedulerCheck())->handle();
 

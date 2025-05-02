@@ -3,8 +3,25 @@
 
     <head>
         <!-- Error: {{ session('error') }} -->
-
-        @if (config('services.analytics.tracking_id'))
+        @if ($company && $company->matomo_url && $company->matomo_id)
+            <script>
+                var _paq = window._paq = window._paq || [];
+                /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+                _paq.push(['trackPageView']);
+                _paq.push(['enableLinkTracking']);
+                @if (auth()->guard('contact')->check())
+                _paq.push(['setUserId', '{{ auth()->guard('contact')->user()->present()->name() }}']);
+                @endif
+                (function() {
+                var u="{{ $company->matomo_url }}";
+                _paq.push(['setTrackerUrl', u+'matomo.php']);
+                _paq.push(['setSiteId', '{{ $company->matomo_id }}']);
+                var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+                g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+                })();
+            </script>
+            <noscript><p><img src="{{ auth()->guard('contact')->user()->company->matomo_url }}/matomo.php?idsite={{ auth()->guard('contact')->user()->company->matomo_id }}&amp;rec=1" style="border:0;" alt="" /></p></noscript>
+        @elseif (config('services.analytics.tracking_id'))
             <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122229484-1"></script>
             <script>
                 window.dataLayer = window.dataLayer || [];
@@ -19,9 +36,6 @@
                 function trackEvent(category, action) {
                     ga('send', 'event', category, action, this.src);
                 }
-            </script>
-            <script>
-                Vue.config.devtools = true;
             </script>
         @else
             <script>
@@ -42,17 +56,14 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="description" content="@yield('meta_description')"/>
-        
+
         <!-- CSRF Token -->
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
         <!-- Scripts -->
-        <script src="{{ mix('js/app.js') }}" defer></script>
-        <script src="{{ asset('vendor/alpinejs@2.8.2/alpine.js') }}" defer></script>
+        @vite('resources/js/app.js')
 
         <!-- Fonts -->
-        {{-- <link rel="dns-prefetch" href="https://fonts.gstatic.com"> --}}
-        {{-- <link href="https://fonts.googleapis.com/css?family=Open+Sans&display=swap" rel="stylesheet" type="text/css" defer> --}}
         <style>
             @font-face {
               font-family: 'Open Sans';
@@ -65,7 +76,7 @@
             }
         </style>
         <!-- Styles -->
-        <link href="{{ mix('css/app.css') }}" rel="stylesheet">
+        @vite('resources/sass/app.scss')
 
         @if(auth()->guard('contact')->user() && !auth()->guard('contact')->user()->user->account->isPaid())
             <link href="{{ asset('favicon.png') }}" rel="shortcut icon" type="image/png">
@@ -106,7 +117,7 @@
             @yield('body')
         @endcomponent
 
-        @livewireScripts
+        @livewireScriptConfig 
 
         <script src="{{ asset('vendor/cookieconsent@3/cookieconsent.min.js') }}" data-cfasync="false"></script>
         <script>
@@ -125,9 +136,9 @@
                     },
                     "content": {
                         "href": "{{ config('ninja.privacy_policy_url.hosted') }}",
-                        "message": "This website uses cookies to ensure you get the best experience on our website.",
-                        "dismiss": "Got it!",
-                        "link": "Learn more",
+                        "message": "{{ ctrans('texts.cookie_message')}}",
+                        "dismiss": "{{ ctrans('texts.got_it')}}",
+                        "link": "{{ ctrans('texts.learn_more')}}",
                     }
                 })}
             );
@@ -156,14 +167,14 @@
                 }
             </script>
         @endif
-        
+
     </body>
 
     <footer>
         @yield('footer')
         @stack('footer')
 
-        @if((bool) \App\Utils\Ninja::isSelfHost() && !empty($client->getSetting('portal_custom_footer')))
+        @if($company && $company->account->isPaid() && !empty($client->getSetting('portal_custom_footer')))
             <div class="py-1 text-sm text-center text-white bg-primary">
                 {!! $client->getSetting('portal_custom_footer') !!}
             </div>

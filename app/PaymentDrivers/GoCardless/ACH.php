@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,12 +15,12 @@ namespace App\PaymentDrivers\GoCardless;
 use App\Exceptions\PaymentFailed;
 use App\Http\Requests\ClientPortal\Payments\PaymentResponseRequest;
 use App\Jobs\Util\SystemLogger;
-use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\Common\MethodInterface;
 use App\PaymentDrivers\GoCardlessPaymentDriver;
 use App\Utils\Traits\MakesHash;
@@ -31,7 +31,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Redirector;
 use Illuminate\View\View;
 
-class ACH implements MethodInterface
+//@deprecated
+class ACH implements MethodInterface, LivewireMethodInterface
 {
     use MakesHash;
 
@@ -48,7 +49,7 @@ class ACH implements MethodInterface
      * Authorization page for ACH.
      *
      * @param array $data
-     * @return Redirector|RedirectResponse
+     * @return \Illuminate\Http\RedirectResponseor|RedirectResponse
      */
     public function authorizeView(array $data)
     {
@@ -107,7 +108,7 @@ class ACH implements MethodInterface
      * Handle ACH post-redirect authorization.
      *
      * @param Request $request
-     * @return RedirectResponse|void
+     * @return \Illuminate\Http\RedirectResponse|void
      */
     public function authorizeResponse(Request $request)
     {
@@ -119,7 +120,7 @@ class ACH implements MethodInterface
                 ]],
             );
 
-            $payment_meta = new \stdClass;
+            $payment_meta = new \stdClass();
             $payment_meta->brand = ctrans('texts.ach');
             $payment_meta->type = GatewayType::BANK_TRANSFER;
             $payment_meta->state = 'authorized';
@@ -142,13 +143,11 @@ class ACH implements MethodInterface
      * Show the payment page for ACH.
      *
      * @param array $data
-     * @return View
+     * @return \Illuminate\View\View
      */
     public function paymentView(array $data): View
     {
-        $data['gateway'] = $this->go_cardless;
-        $data['amount'] = $this->go_cardless->convertToGoCardlessAmount($data['total']['amount_with_fee'], $this->go_cardless->client->currency()->precision);
-        $data['currency'] = $this->go_cardless->client->getCurrencyCode();
+        $data = $this->paymentData($data);
 
         return render('gateways.gocardless.ach.pay', $data);
     }
@@ -157,13 +156,13 @@ class ACH implements MethodInterface
      * Process payments for ACH.
      *
      * @param PaymentResponseRequest $request
-     * @return RedirectResponse|void
+     * @return \Illuminate\Http\RedirectResponse|void
      */
     public function paymentResponse(PaymentResponseRequest $request)
     {
         $this->go_cardless->ensureMandateIsReady($request->source);
 
-        $invoice = Invoice::whereIn('id', $this->transformKeys(array_column($this->go_cardless->payment_hash->invoices(), 'invoice_id')))
+        $invoice = Invoice::query()->whereIn('id', $this->transformKeys(array_column($this->go_cardless->payment_hash->invoices(), 'invoice_id')))
                           ->withTrashed()
                           ->first();
 
@@ -173,10 +172,13 @@ class ACH implements MethodInterface
             $description = "Amount {$request->amount} from client {$this->go_cardless->client->present()->name()}";
         }
 
+        $amount = $this->go_cardless->convertToGoCardlessAmount($this->go_cardless->payment_hash?->amount_with_fee(), $this->go_cardless->client->currency()->precision); //@phpstan-ignore-line
+
         try {
             $payment = $this->go_cardless->gateway->payments()->create([
                 'params' => [
-                    'amount' => $request->amount,
+                    // 'amount' => $request->amount,
+                    'amount' => $amount,
                     'currency' => $request->currency,
                     'description' => $description,
                     'metadata' => [
@@ -203,7 +205,7 @@ class ACH implements MethodInterface
      *
      * @param ResourcesPayment $payment
      * @param array $data
-     * @return RedirectResponse
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function processPendingPayment(ResourcesPayment $payment, array $data = [])
     {
@@ -214,7 +216,7 @@ class ACH implements MethodInterface
             'gateway_type_id' => GatewayType::BANK_TRANSFER,
         ];
 
-        $payment = $this->go_cardless->createPayment($data, Payment::STATUS_PENDING);
+        $_payment = $this->go_cardless->createPayment($data, Payment::STATUS_PENDING);
 
         SystemLogger::dispatch(
             ['response' => $payment, 'data' => $data],
@@ -225,7 +227,7 @@ class ACH implements MethodInterface
             $this->go_cardless->client->company,
         );
 
-        return redirect()->route('client.payments.show', ['payment' => $this->go_cardless->encodePrimaryKey($payment->id)]);
+        return redirect()->route('client.payments.show', ['payment' => $_payment->hashed_id]);
     }
 
     /**
@@ -253,5 +255,24 @@ class ACH implements MethodInterface
         );
 
         throw new PaymentFailed('Failed to process the payment.', 500);
+    }
+    /**
+     * @inheritDoc
+     */
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.gocardless.ach.pay_livewire';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function paymentData(array $data): array
+    {
+        $data['gateway'] = $this->go_cardless;
+        $data['amount'] = $this->go_cardless->convertToGoCardlessAmount($data['total']['amount_with_fee'], $this->go_cardless->client->currency()->precision);
+        $data['currency'] = $this->go_cardless->client->getCurrencyCode();
+
+        return $data;
     }
 }

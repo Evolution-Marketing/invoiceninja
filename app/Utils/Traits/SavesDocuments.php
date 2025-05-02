@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -33,8 +34,9 @@ trait SavesDocuments
             return false;
         }
 
-        if(!is_array($document_array))
+        if (!is_array($document_array)) {
             return;
+        }
 
         foreach ($document_array as $document) {
             $document = (new UploadFile(
@@ -47,6 +49,8 @@ trait SavesDocuments
                 $is_public
             ))->handle();
         }
+
+        $entity->touch();
     }
 
     public function saveDocument($document, $entity, $is_public = true)
@@ -74,5 +78,8 @@ trait SavesDocuments
             null,
             $is_public
         ))->handle();
+
+        $entity->touch();
+
     }
 }

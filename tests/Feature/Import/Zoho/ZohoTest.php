@@ -11,13 +11,10 @@
 
 namespace Tests\Feature\Import\Zoho;
 
-use App\Import\Providers\BaseImport;
 use App\Import\Providers\Zoho;
 use App\Import\Transformer\BaseTransformer;
 use App\Models\Client;
 use App\Models\Invoice;
-use App\Models\Product;
-use App\Models\Vendor;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -28,8 +25,8 @@ use Tests\MockAccountData;
 use Tests\TestCase;
 
 /**
- * @test
- * @covers App\Import\Providers\Zoho
+ * 
+ *  App\Import\Providers\Zoho
  */
 class ZohoTest extends TestCase
 {

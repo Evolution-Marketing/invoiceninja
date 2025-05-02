@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,6 +23,8 @@ use App\Jobs\Company\CreateCompanyTaskStatuses;
 use App\Jobs\Ninja\CompanySizeCheck;
 use App\Jobs\Util\VersionCheck;
 use App\Models\Account;
+use App\Models\BankIntegration;
+use App\Models\BankTransaction;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\Company;
@@ -39,6 +42,7 @@ use App\Models\Vendor;
 use App\Models\VendorContact;
 use App\Repositories\InvoiceRepository;
 use App\Utils\Ninja;
+use App\Utils\Traits\AppSetup;
 use App\Utils\Traits\GeneratesCounter;
 use App\Utils\Traits\MakesHash;
 use Carbon\Carbon;
@@ -51,7 +55,9 @@ use Illuminate\Support\Str;
 
 class DemoMode extends Command
 {
-    use MakesHash, GeneratesCounter;
+    use MakesHash;
+    use GeneratesCounter;
+    use AppSetup;
 
     protected $signature = 'ninja:demo-mode';
 
@@ -73,41 +79,19 @@ class DemoMode extends Command
     {
         set_time_limit(0);
 
-        if (config('ninja.is_docker')) {
+        if (config('ninja.is_docker') || Ninja::isHosted()) {
             return;
         }
 
         $this->invoice_repo = new InvoiceRepository();
 
-        $cached_tables = config('ninja.cached_tables');
-
-        foreach ($cached_tables as $name => $class) {
-            if (! Cache::has($name)) {
-                // check that the table exists in case the migration is pending
-                if (! Schema::hasTable((new $class())->getTable())) {
-                    continue;
-                }
-                if ($name == 'payment_terms') {
-                    $orderBy = 'num_days';
-                } elseif ($name == 'fonts') {
-                    $orderBy = 'sort_order';
-                } elseif (in_array($name, ['currencies', 'industries', 'languages', 'countries', 'banks'])) {
-                    $orderBy = 'name';
-                } else {
-                    $orderBy = 'id';
-                }
-                $tableData = $class::orderBy($orderBy)->get();
-                if ($tableData->count()) {
-                    Cache::forever($name, $tableData);
-                }
-            }
-        }
-
         $this->info('Migrating');
         Artisan::call('migrate:fresh --force');
 
         $this->info('Seeding');
+
         Artisan::call('db:seed --force');
+        Artisan::call('cache:clear');
 
         $this->info('Seeding Random Data');
         $this->createSmallAccount();
@@ -125,7 +109,9 @@ class DemoMode extends Command
 
         $this->info('Creating Small Account and Company');
 
-        $account = Account::factory()->create();
+        $account = Account::factory()->create([
+            "set_react_as_default_ap" => 0,
+        ]);
         $company = Company::factory()->create([
             'account_id' => $account->id,
             'slack_webhook_url' => config('ninja.notification.slack'),
@@ -168,7 +154,7 @@ class DemoMode extends Command
         (new CreateCompanyPaymentTerms($company, $user))->handle();
         (new CreateCompanyTaskStatuses($company, $user))->handle();
 
-        $company_token = new CompanyToken;
+        $company_token = new CompanyToken();
         $company_token->user_id = $user->id;
         $company_token->company_id = $company->id;
         $company_token->account_id = $account->id;
@@ -199,12 +185,13 @@ class DemoMode extends Command
                 'email_verified_at' => now(),
             ]);
 
-            $company_token = new CompanyToken;
+            $company_token = new CompanyToken();
             $company_token->user_id = $u2->id;
             $company_token->company_id = $company->id;
             $company_token->account_id = $account->id;
             $company_token->name = 'test token';
             $company_token->token = 'TOKEN';
+            $company_token->is_system = true;
             $company_token->save();
 
             $u2->companies()->attach($company->id, [
@@ -219,6 +206,18 @@ class DemoMode extends Command
         }
 
         Product::factory()->count(50)->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+        ]);
+
+        $bi = BankIntegration::factory()->create([
+            'account_id' => $account->id,
+            'company_id' => $company->id,
+            'user_id' => $user->id,
+        ]);
+
+        BankTransaction::factory()->count(50)->create([
+            'bank_integration_id' => $bi->id,
             'user_id' => $user->id,
             'company_id' => $company->id,
         ]);
@@ -262,7 +261,6 @@ class DemoMode extends Command
 
     private function createClient($company, $user, $assigned_user_id = null)
     {
-
         // dispatch(function () use ($company, $user) {
 
         // });
@@ -624,31 +622,4 @@ class DemoMode extends Command
         return $line_items;
     }
 
-    private function warmCache()
-    {
-        /* Warm up the cache !*/
-        $cached_tables = config('ninja.cached_tables');
-
-        foreach ($cached_tables as $name => $class) {
-            if (! Cache::has($name)) {
-                // check that the table exists in case the migration is pending
-                if (! Schema::hasTable((new $class())->getTable())) {
-                    continue;
-                }
-                if ($name == 'payment_terms') {
-                    $orderBy = 'num_days';
-                } elseif ($name == 'fonts') {
-                    $orderBy = 'sort_order';
-                } elseif (in_array($name, ['currencies', 'industries', 'languages', 'countries', 'banks'])) {
-                    $orderBy = 'name';
-                } else {
-                    $orderBy = 'id';
-                }
-                $tableData = $class::orderBy($orderBy)->get();
-                if ($tableData->count()) {
-                    Cache::forever($name, $tableData);
-                }
-            }
-        }
-    }
 }

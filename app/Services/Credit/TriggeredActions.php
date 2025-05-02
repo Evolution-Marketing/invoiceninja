@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Credit Ninja (https://invoiceninja.com).
  *
@@ -11,13 +12,14 @@
 
 namespace App\Services\Credit;
 
-use App\Events\Credit\CreditWasEmailed;
-use App\Jobs\Entity\EmailEntity;
-use App\Models\Credit;
-use App\Services\AbstractService;
 use App\Utils\Ninja;
-use App\Utils\Traits\GeneratesCounter;
+use App\Models\Credit;
+use App\Models\Webhook;
 use Illuminate\Http\Request;
+use App\Jobs\Entity\EmailEntity;
+use App\Services\AbstractService;
+use App\Utils\Traits\GeneratesCounter;
+use App\Events\Credit\CreditWasEmailed;
 
 class TriggeredActions extends AbstractService
 {
@@ -42,7 +44,27 @@ class TriggeredActions extends AbstractService
         }
 
         if ($this->request->has('mark_sent') && $this->request->input('mark_sent') == 'true') {
-            $this->credit = $this->credit->service()->markSent()->save();
+            $this->credit = $this->credit->service()->markSent(true)->save();
+        }
+
+        if ($this->request->has('save_default_footer') && $this->request->input('save_default_footer') == 'true') {
+            $company = $this->credit->company;
+            $settings = $company->settings;
+            $settings->credit_footer = $this->credit->footer;
+            $company->settings = $settings;
+            $company->save();
+        }
+
+        if ($this->request->has('save_default_terms') && $this->request->input('save_default_terms') == 'true') {
+            $company = $this->credit->company;
+            $settings = $company->settings;
+            $settings->credit_terms = $this->credit->terms;
+            $company->settings = $settings;
+            $company->save();
+        }
+
+        if ($this->request->has('mark_paid') && $this->request->input('mark_paid') == 'true') {
+            $this->credit->service()->markPaid()->save();
         }
 
         return $this->credit;
@@ -53,11 +75,12 @@ class TriggeredActions extends AbstractService
         $reminder_template = $this->credit->calculateTemplate('credit');
 
         $this->credit->invitations->load('contact.client.country', 'credit.client.country', 'credit.company')->each(function ($invitation) use ($reminder_template) {
-            EmailEntity::dispatch($invitation, $this->credit->company, $reminder_template);
+            EmailEntity::dispatch($invitation->withoutRelations(), $this->credit->company->db, $reminder_template);
         });
 
         if ($this->credit->invitations->count() > 0) {
             event(new CreditWasEmailed($this->credit->invitations->first(), $this->credit->company, Ninja::eventVars(), 'credit'));
+            $this->credit->sendEvent(Webhook::EVENT_SENT_CREDIT, "client");
         }
     }
 }

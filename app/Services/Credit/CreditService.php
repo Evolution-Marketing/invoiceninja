@@ -1,27 +1,28 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Services\Credit;
 
-use App\Factory\PaymentFactory;
-use App\Jobs\Entity\CreateEntityPdf;
-use App\Jobs\Util\UnlinkFile;
+use App\Utils\Ninja;
 use App\Models\Credit;
 use App\Models\Payment;
 use App\Models\PaymentType;
-use App\Repositories\CreditRepository;
-use App\Repositories\PaymentRepository;
-use App\Services\Credit\CreateInvitations;
-use App\Services\Credit\TriggeredActions;
+use App\Factory\PaymentFactory;
 use App\Utils\Traits\MakesHash;
+use App\Repositories\CreditRepository;
+use App\Services\Invoice\LocationData;
+use App\Jobs\EDocument\CreateEDocument;
+use App\Repositories\PaymentRepository;
+use Illuminate\Support\Facades\Storage;
 
 class CreditService
 {
@@ -34,9 +35,24 @@ class CreditService
         $this->credit = $credit;
     }
 
+    public function location(): array
+    {
+        return (new LocationData($this->credit))->run();
+    }
+
     public function getCreditPdf($invitation)
     {
         return (new GetCreditPdf($invitation))->run();
+    }
+
+    public function getECredit($contact = null)
+    {
+        return (new CreateEDocument($this->credit))->handle();
+    }
+
+    public function getEDocument($contact = null)
+    {
+        return $this->getECredit($contact);
     }
 
     /**
@@ -121,7 +137,7 @@ class CreditService
         $payment->type_id = PaymentType::CREDIT;
         $payment->is_manual = true;
         $payment->currency_id = $this->credit->client->getSetting('currency_id');
-        $payment->date = now();
+        $payment->date = now()->addSeconds($this->credit->company->utc_offset())->format('Y-m-d');
 
         $payment->saveQuietly();
         $payment->number = $payment->client->getNextPaymentNumber($payment->client, $payment);
@@ -131,13 +147,6 @@ class CreditService
         $payment
              ->credits()
              ->attach($this->credit->id, ['amount' => $adjustment]);
-
-        //reduce client paid_to_date by $this->credit->balance amount
-        // $this->credit
-        //      ->client
-        //      ->service()
-        //      ->updatePaidToDate($adjustment)
-        //      ->save();
 
         $client = $this->credit->client->fresh();
         $client->service()
@@ -150,9 +159,9 @@ class CreditService
         return $this;
     }
 
-    public function markSent()
+    public function markSent($fire_event = false)
     {
-        $this->credit = (new MarkSent($this->credit->client, $this->credit))->run();
+        $this->credit = (new MarkSent($this->credit->client, $this->credit))->run($fire_event);
 
         return $this;
     }
@@ -161,7 +170,7 @@ class CreditService
     {
         $this->credit = (new ApplyPayment($this->credit, $invoice, $amount, $payment))->run();
 
-        $this->deletePdf();
+        // $this->deletePdf();
 
         return $this;
     }
@@ -183,32 +192,6 @@ class CreditService
     public function updateBalance($adjustment)
     {
         $this->credit->balance -= $adjustment;
-
-        return $this;
-    }
-
-    /**
-     * Sometimes we need to refresh the
-     * PDF when it is updated etc.
-     * @return InvoiceService
-     */
-    public function touchPdf($force = false)
-    {
-        try {
-            if ($force) {
-                $this->credit->invitations->each(function ($invitation) {
-                    (new CreateEntityPdf($invitation))->handle();
-                });
-
-                return $this;
-            }
-
-            $this->credit->invitations->each(function ($invitation) {
-                CreateEntityPdf::dispatch($invitation);
-            });
-        } catch (\Exception $e) {
-            nlog('failed creating invoices in Touch PDF');
-        }
 
         return $this;
     }
@@ -243,27 +226,47 @@ class CreditService
 
     public function deletePdf()
     {
+        return $this;
+    }
+
+    public function deleteECredit()
+    {
+        $this->credit->load('invitations');
+
         $this->credit->invitations->each(function ($invitation) {
-            (new UnlinkFile(config('filesystems.default'), $this->credit->client->credit_filepath($invitation).$this->credit->numberFormatter().'.pdf'))->handle();
+            try {
+                // if (Storage::disk(config('filesystems.default'))->exists($this->invoice->client->e_invoice_filepath($invitation).$this->invoice->getFileName("xml"))) {
+                Storage::disk(config('filesystems.default'))->delete($this->credit->client->e_document_filepath($invitation).$this->credit->getFileName("xml"));
+                // }
+
+                // if (Ninja::isHosted() && Storage::disk('public')->exists($this->invoice->client->e_invoice_filepath($invitation).$this->invoice->getFileName("xml"))) {
+                if (Ninja::isHosted()) {
+                    Storage::disk('public')->delete($this->credit->client->e_document_filepath($invitation).$this->credit->getFileName("xml"));
+                }
+            } catch (\Exception $e) {
+                nlog($e->getMessage());
+            }
         });
 
         return $this;
     }
-
     public function triggeredActions($request)
     {
-        $this->invoice = (new TriggeredActions($this->credit, $request))->run();
+        $this->credit = (new TriggeredActions($this->credit, $request))->run();
 
         return $this;
     }
 
     public function deleteCredit()
     {
+        $paid_to_date = $this->credit->invoice_id ? $this->credit->balance : 0;
+
         $this->credit
-             ->client
-             ->service()
-             ->adjustCreditBalance($this->credit->balance * -1)
-             ->save();
+            ->client
+            ->service()
+            ->updatePaidToDate($paid_to_date)
+            ->adjustCreditBalance($this->credit->balance * -1)
+            ->save();
 
         return $this;
     }
@@ -271,9 +274,13 @@ class CreditService
 
     public function restoreCredit()
     {
+
+        $paid_to_date = $this->credit->invoice_id ? $this->credit->balance : 0;
+
         $this->credit
              ->client
              ->service()
+             ->updatePaidToDate($paid_to_date * -1)
              ->adjustCreditBalance($this->credit->balance)
              ->save();
 
@@ -284,7 +291,7 @@ class CreditService
      * Saves the credit.
      * @return Credit object
      */
-    public function save() : ?Credit
+    public function save(): ?Credit
     {
         $this->credit->saveQuietly();
 

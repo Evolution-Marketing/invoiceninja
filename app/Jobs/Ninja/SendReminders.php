@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -33,7 +34,12 @@ use Illuminate\Support\Facades\App;
 //@DEPRECATED
 class SendReminders implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, MakesDates, MakesReminders;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use MakesDates;
+    use MakesReminders;
 
     /**
      * Create a new job instance.
@@ -177,19 +183,19 @@ class SendReminders implements ShouldQueue
      * @param  int $num_days_reminder
      * @return Carbon  $date
      */
-    private function calculateScheduledDate($invoice, $schedule_reminder, $num_days_reminder) :?Carbon
+    private function calculateScheduledDate($invoice, $schedule_reminder, $num_days_reminder): ?Carbon
     {
         $offset = $invoice->client->timezone_offset();
 
         switch ($schedule_reminder) {
             case 'after_invoice_date':
-                return Carbon::parse($invoice->date)->addDays($num_days_reminder)->startOfDay()->addSeconds($offset);
+                return Carbon::parse($invoice->date)->addDays((int)$num_days_reminder)->startOfDay()->addSeconds($offset);
                 break;
             case 'before_due_date':
-                return Carbon::parse($invoice->due_date)->subDays($num_days_reminder)->startOfDay()->addSeconds($offset);
+                return Carbon::parse($invoice->due_date)->subDays((int)$num_days_reminder)->startOfDay()->addSeconds($offset);
                 break;
             case 'after_due_date':
-                return Carbon::parse($invoice->due_date)->addDays($num_days_reminder)->startOfDay()->addSeconds($offset);
+                return Carbon::parse($invoice->due_date)->addDays((int)$num_days_reminder)->startOfDay()->addSeconds($offset);
                 break;
             default:
                 return null;
@@ -204,23 +210,20 @@ class SendReminders implements ShouldQueue
      * @param  string $template
      * @return void
      */
-    private function sendReminder($invoice, $template) :void
+    private function sendReminder($invoice, $template): void
     {
         $invoice = $this->calcLateFee($invoice, $template);
 
         $invoice->invitations->each(function ($invitation) use ($template, $invoice) {
-
             //only send if enable_reminder setting is toggled to yes
             if ($this->checkSendSetting($invoice, $template) && $invoice->company->account->hasFeature(Account::FEATURE_EMAIL_TEMPLATES_REMINDERS)) {
                 nlog('firing email');
 
-                EmailEntity::dispatch($invitation, $invitation->company, $template)->delay(10);
+                EmailEntity::dispatch($invitation->withoutRelations(), $invitation->company->db, $template)->delay(10);
+                $invoice->entityEmailEvent($invoice->invitations->first(), $template);
+                $invoice->sendEvent(Webhook::EVENT_REMIND_INVOICE, "client");
             }
         });
-
-        if ($this->checkSendSetting($invoice, $template)) {
-            event(new InvoiceWasEmailed($invoice->invitations->first(), $invoice->company, Ninja::eventVars(), $template));
-        }
 
         $invoice->last_sent_date = now();
         $invoice->next_send_date = $this->calculateNextSendDate($invoice);
@@ -228,9 +231,9 @@ class SendReminders implements ShouldQueue
         if (in_array($template, ['reminder1', 'reminder2', 'reminder3'])) {
             $invoice->{$template.'_sent'} = now();
         }
+
         $invoice->service()->touchReminder($template)->save();
 
-        // $invoice->save();
     }
 
     /**
@@ -240,7 +243,7 @@ class SendReminders implements ShouldQueue
      * @param  string $template
      * @return Invoice
      */
-    private function calcLateFee($invoice, $template) :Invoice
+    private function calcLateFee($invoice, $template): Invoice
     {
         $late_fee_amount = 0;
         $late_fee_percent = 0;
@@ -280,7 +283,7 @@ class SendReminders implements ShouldQueue
      *
      * @return Invoice
      */
-    private function setLateFee($invoice, $amount, $percent) :Invoice
+    private function setLateFee($invoice, $amount, $percent): Invoice
     {
         App::forgetInstance('translator');
         $t = app('translator');
@@ -301,7 +304,7 @@ class SendReminders implements ShouldQueue
             $fee += round($invoice->balance * $percent / 100, 2);
         }
 
-        $invoice_item = new InvoiceItem;
+        $invoice_item = new InvoiceItem();
         $invoice_item->type_id = '5';
         $invoice_item->product_key = trans('texts.fee');
         $invoice_item->notes = ctrans('texts.late_fee_added', ['date' => $this->translateDate(now()->startOfDay(), $invoice->client->date_format(), $invoice->client->locale())]);
@@ -316,7 +319,9 @@ class SendReminders implements ShouldQueue
         /**Refresh Invoice values*/
         $invoice = $invoice->calc()->getInvoice();
 
-        $invoice->client->service()->updateBalance($invoice->balance - $temp_invoice_balance)->save();
+        $invoice->client->service()->calculateBalance();
+
+        // $invoice->client->service()->updateBalance($invoice->balance - $temp_invoice_balance)->save();
         $invoice->ledger()->updateInvoiceBalance($invoice->balance - $temp_invoice_balance, "Late Fee Adjustment for invoice {$invoice->number}");
 
         return $invoice;

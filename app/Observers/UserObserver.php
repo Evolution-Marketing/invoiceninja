@@ -1,17 +1,20 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Observers;
 
+use App\Jobs\User\VerifyPhone;
 use App\Models\User;
+use App\Utils\Ninja;
 
 class UserObserver
 {
@@ -23,7 +26,9 @@ class UserObserver
      */
     public function created(User $user)
     {
-
+        if (Ninja::isHosted() && isset($user->phone)) {
+            VerifyPhone::dispatch($user);
+        }
     }
 
     /**
@@ -34,6 +39,22 @@ class UserObserver
      */
     public function updated(User $user)
     {
+        if (Ninja::isHosted() && $user->isDirty('email') && $user->company_users()->where('is_owner', true)->exists()) {
+            //ensure they are owner user and update email on file.
+            if (class_exists(\Modules\Admin\Jobs\Account\UpdateOwnerUser::class)) {
+                \Modules\Admin\Jobs\Account\UpdateOwnerUser::dispatch($user->account->key, $user, $user->getOriginal('email'));
+            }
+        }
+
+        if (Ninja::isHosted() && $user->isDirty('first_name') || $user->isDirty('last_name')) {
+
+            try {
+                (new \Modules\Admin\Jobs\Account\FieldQuality())->checkUserName($user, $user->account->companies->first());
+            } catch (\Throwable $e) {
+                nlog(['user_name_check', $e->getMessage()]);
+            }
+
+        }
 
     }
 

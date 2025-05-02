@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://clientninja.com).
  *
- * @link https://github.com/clientninja/clientninja source repository
+ * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. client Ninja LLC (https://clientninja.com)
+ * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -42,7 +43,7 @@ class ClientTransformer extends BaseTransformer
             'country_id'     => isset($data['Country']) ? $this->getCountryId($data['Country']) : null,
             'private_notes'   => $this->getString($data, 'Notes'),
             'credit_balance' => 0,
-            'settings'       => new \stdClass,
+            'settings'       => new \stdClass(),
             'client_hash'    => Str::random(40),
             'contacts'       => [
                 [

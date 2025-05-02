@@ -1,19 +1,20 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers\Reports;
 
-use App\Export\CSV\PaymentExport;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Report\ProfitLossRequest;
+use App\Jobs\Report\PreviewReport;
 use App\Jobs\Report\SendToAdmin;
 use App\Models\Client;
 use App\Services\Report\ProfitLoss;
@@ -38,7 +39,6 @@ class ProfitAndLossController extends BaseController
      *      tags={"reports"},
      *      summary="Profit loss reports",
      *      description="Profit loss report",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\RequestBody(
      *          required=true,
@@ -65,25 +65,21 @@ class ProfitAndLossController extends BaseController
      */
     public function __invoke(ProfitLossRequest $request)
     {
-        if ($request->has('send_email') && $request->get('send_email')) {
-            SendToAdmin::dispatch(auth()->user()->company(), $request->all(), ProfitLoss::class, $this->filename);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if ($request->has('send_email') && $request->get('send_email') && $request->missing('output')) {
+            SendToAdmin::dispatch($user->company(), $request->all(), ProfitLoss::class, $this->filename);
 
             return response()->json(['message' => 'working...'], 200);
         }
-        // expect a list of visible fields, or use the default
 
-        $pnl = new ProfitLoss(auth()->user()->company(), $request->all());
-        $pnl->build();
+        $hash = \Illuminate\Support\Str::uuid();
 
-        $csv = $pnl->getCsv();
+        PreviewReport::dispatch($user->company(), $request->all(), ProfitLoss::class, $hash);
 
-        $headers = [
-            'Content-Disposition' => 'attachment',
-            'Content-Type' => 'text/csv',
-        ];
+        return response()->json(['message' => $hash], 200);
 
-        return response()->streamDownload(function () use ($csv) {
-            echo $csv;
-        }, $this->filename, $headers);
+
     }
 }

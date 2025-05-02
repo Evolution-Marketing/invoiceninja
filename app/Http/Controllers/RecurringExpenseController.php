@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -31,7 +32,6 @@ use App\Utils\Traits\BulkOptions;
 use App\Utils\Traits\MakesHash;
 use App\Utils\Traits\SavesDocuments;
 use App\Utils\Traits\Uploadable;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -50,7 +50,7 @@ class RecurringExpenseController extends BaseController
     protected $entity_transformer = RecurringExpenseTransformer::class;
 
     /**
-     * @var RecurringExpenseepository
+     * @var RecurringExpenseRepository
      */
     protected $recurring_expense_repo;
 
@@ -73,9 +73,8 @@ class RecurringExpenseController extends BaseController
      *      summary="Gets a list of recurring_expenses",
      *      description="Lists recurring_expenses, search and filters allow fine grained lists to be generated.
 
-    Query parameters can be added to performed more fine grained filtering of the recurring_expenses, these are handled by the RecurringExpenseFilters class which defines the methods available",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     * Query parameters can be added to performed more fine grained filtering of the recurring_expenses, these are handled by the RecurringExpenseFilters class which defines the methods available",
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
@@ -99,7 +98,7 @@ class RecurringExpenseController extends BaseController
      *       ),
      *     )
      * @param RecurringExpenseFilters $filters
-     * @return Response|mixed
+     * @return Response| \Illuminate\Http\JsonResponse|mixed
      */
     public function index(RecurringExpenseFilters $filters)
     {
@@ -113,7 +112,7 @@ class RecurringExpenseController extends BaseController
      *
      * @param ShowRecurringExpenseRequest $request
      * @param RecurringExpense $recurring_expense
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -122,8 +121,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Shows a client",
      *      description="Displays a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -168,7 +166,7 @@ class RecurringExpenseController extends BaseController
      *
      * @param EditRecurringExpenseRequest $request
      * @param RecurringExpense $recurring_expense
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Get(
@@ -177,8 +175,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Shows a client for editting",
      *      description="Displays a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -223,7 +220,7 @@ class RecurringExpenseController extends BaseController
      *
      * @param UpdateRecurringExpenseRequest $request
      * @param RecurringExpense $recurring_expense
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -233,8 +230,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Updates a client",
      *      description="Handles the updating of a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -289,7 +285,7 @@ class RecurringExpenseController extends BaseController
      * Show the form for creating a new resource.
      *
      * @param CreateRecurringExpenseRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -299,8 +295,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Gets a new blank client object",
      *      description="Returns a blank object with default values",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -326,7 +321,10 @@ class RecurringExpenseController extends BaseController
      */
     public function create(CreateRecurringExpenseRequest $request)
     {
-        $recurring_expense = RecurringExpenseFactory::create(auth()->user()->company()->id, auth()->user()->id);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $recurring_expense = RecurringExpenseFactory::create($user->company()->id, $user->id);
 
         return $this->itemResponse($recurring_expense);
     }
@@ -335,7 +333,7 @@ class RecurringExpenseController extends BaseController
      * Store a newly created resource in storage.
      *
      * @param StoreRecurringExpenseRequest $request
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -345,8 +343,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Adds a client",
      *      description="Adds an client to a company",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Response(
@@ -372,10 +369,13 @@ class RecurringExpenseController extends BaseController
      */
     public function store(StoreRecurringExpenseRequest $request)
     {
-        $recurring_expense = $this->recurring_expense_repo->save($request->all(), RecurringExpenseFactory::create(auth()->user()->company()->id, auth()->user()->id));
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $recurring_expense = $this->recurring_expense_repo->save($request->all(), RecurringExpenseFactory::create($user->company()->id, $user->id));
         $recurring_expense->service()->triggeredActions($request)->save();
 
-        event(new RecurringExpenseWasCreated($recurring_expense, $recurring_expense->company, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
+        event(new RecurringExpenseWasCreated($recurring_expense, $recurring_expense->company, Ninja::eventVars($user->id)));
 
         return $this->itemResponse($recurring_expense);
     }
@@ -385,7 +385,7 @@ class RecurringExpenseController extends BaseController
      *
      * @param DestroyRecurringExpenseRequest $request
      * @param RecurringExpense $recurring_expense
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @throws \Exception
@@ -395,8 +395,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Deletes a client",
      *      description="Handles the deletion of a client by id",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -440,7 +439,7 @@ class RecurringExpenseController extends BaseController
     /**
      * Perform bulk actions on the list view.
      *
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      * @OA\Post(
@@ -449,8 +448,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expenses"},
      *      summary="Performs bulk actions on an array of recurring_expenses",
      *      description="",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/index"),
      *      @OA\RequestBody(
@@ -490,13 +488,16 @@ class RecurringExpenseController extends BaseController
      */
     public function bulk()
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $action = request()->input('action');
 
         $ids = request()->input('ids');
         $recurring_expenses = RecurringExpense::withTrashed()->find($this->transformKeys($ids));
 
-        $recurring_expenses->each(function ($recurring_expense, $key) use ($action) {
-            if (auth()->user()->can('edit', $recurring_expense)) {
+        $recurring_expenses->each(function ($recurring_expense, $key) use ($action, $user) {
+            if ($user->can('edit', $recurring_expense)) {
                 $this->performAction($recurring_expense, $action, true);
             }
         });
@@ -557,7 +558,7 @@ class RecurringExpenseController extends BaseController
      *
      * @param UploadRecurringExpenseRequest $request
      * @param RecurringExpense $recurring_expense
-     * @return Response
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      *
      *
@@ -567,8 +568,7 @@ class RecurringExpenseController extends BaseController
      *      tags={"recurring_expense"},
      *      summary="Uploads a document to a recurring_expense",
      *      description="Handles the uploading of a document to a recurring_expense",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Token"),
+     *      @OA\Parameter(ref="#/components/parameters/X-API-TOKEN"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Parameter(ref="#/components/parameters/include"),
      *      @OA\Parameter(
@@ -610,7 +610,7 @@ class RecurringExpenseController extends BaseController
         }
 
         if ($request->has('documents')) {
-            $this->saveDocuments($request->file('documents'), $recurring_expense);
+            $this->saveDocuments($request->file('documents'), $recurring_expense, $request->input('is_public', true));
         }
 
         return $this->itemResponse($recurring_expense->fresh());

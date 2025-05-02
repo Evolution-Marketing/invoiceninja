@@ -14,6 +14,7 @@
     <meta name="pi-client-secret" content="{{ $pi_client_secret }}">
 
     <meta name="translation-terms-required" content="{{ ctrans('texts.you_need_to_accept_the_terms_before_proceeding') }}">
+    <meta name="instant-payment" content="yes" />
 @endsection
 
 @section('gateway_content')
@@ -30,5 +31,5 @@
 
 @push('footer')
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="{{ asset('js/clients/payments/stripe-giropay.js') }}"></script>
+    @vite('resources/js/clients/payments/stripe-giropay.js')
 @endpush

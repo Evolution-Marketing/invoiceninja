@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -26,13 +27,13 @@ class CompanyShopProfileTransformer extends EntityTransformer
     /**
      * @var array
      */
-    protected $defaultIncludes = [
+    protected array $defaultIncludes = [
     ];
 
     /**
      * @var array
      */
-    protected $availableIncludes = [
+    protected array $availableIncludes = [
     ];
 
     /**
@@ -42,7 +43,7 @@ class CompanyShopProfileTransformer extends EntityTransformer
      */
     public function transform(Company $company)
     {
-        $std = new stdClass;
+        $std = new stdClass();
 
         return [
             'company_key' => (string) $company->company_key ?: '',
@@ -52,7 +53,7 @@ class CompanyShopProfileTransformer extends EntityTransformer
 
     private function trimCompany($company)
     {
-        $std = new stdClass;
+        $std = new stdClass();
 
         $trimmed_company_settings = [
             'custom_fields' => $company->custom_fields ?: $std,
@@ -72,9 +73,12 @@ class CompanyShopProfileTransformer extends EntityTransformer
             'email' => $company->settings->email,
             'country_id' => $company->settings->country_id,
             'vat_number' => $company->settings->vat_number,
+            'product' => $company->settings->translations->product ?? ctrans('texts.product'),
+            'products' => $company->settings->translations->products ?? ctrans('texts.products'),
+            'client_registration_fields' => $company->client_registration_fields,
         ];
 
-        $new_settings = new stdClass;
+        $new_settings = new stdClass();
 
         foreach ($trimmed_company_settings as $key => $value) {
             $new_settings->{$key} = $value;

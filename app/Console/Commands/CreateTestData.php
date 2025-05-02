@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -47,7 +48,8 @@ use Illuminate\Support\Str;
 
 class CreateTestData extends Command
 {
-    use MakesHash, GeneratesCounter;
+    use MakesHash;
+    use GeneratesCounter;
 
     /**
      * @var string
@@ -60,6 +62,8 @@ class CreateTestData extends Command
     protected $signature = 'ninja:create-test-data {count=1}';
 
     protected $invoice_repo;
+
+    protected $count;
 
     /**
      * Execute the console command.
@@ -82,8 +86,6 @@ class CreateTestData extends Command
         $this->count = $this->argument('count');
 
         $this->info('Warming up cache');
-
-        $this->warmCache();
 
         $this->createSmallAccount();
         $this->createMediumAccount();
@@ -113,7 +115,7 @@ class CreateTestData extends Command
             ]);
         }
 
-        $company_token = new CompanyToken;
+        $company_token = new CompanyToken();
         $company_token->user_id = $user->id;
         $company_token->company_id = $company->id;
         $company_token->account_id = $account->id;
@@ -208,7 +210,7 @@ class CreateTestData extends Command
             ]);
         }
 
-        $company_token = new CompanyToken;
+        $company_token = new CompanyToken();
         $company_token->user_id = $user->id;
         $company_token->company_id = $company->id;
         $company_token->account_id = $account->id;
@@ -305,7 +307,7 @@ class CreateTestData extends Command
             ]);
         }
 
-        $company_token = new CompanyToken;
+        $company_token = new CompanyToken();
         $company_token->user_id = $user->id;
         $company_token->company_id = $company->id;
         $company_token->account_id = $account->id;
@@ -380,7 +382,6 @@ class CreateTestData extends Command
 
     private function createClient($company, $user)
     {
-
         // dispatch(function () use ($company, $user) {
 
         // });
@@ -437,7 +438,7 @@ class CreateTestData extends Command
             'company_id' => $client->company->id,
         ]);
 
-        Document::factory()->count(50)->create([
+        Document::factory()->count(1)->create([
             'user_id' => $client->user->id,
             'company_id' => $client->company_id,
             'documentable_type' => Vendor::class,
@@ -495,7 +496,7 @@ class CreateTestData extends Command
 
         $invoice = InvoiceFactory::create($client->company->id, $client->user->id); //stub the company and user_id
         $invoice->client_id = $client->id;
-//        $invoice->date = $faker->date();
+        //        $invoice->date = $faker->date();
         $dateable = Carbon::now()->subDays(rand(0, 90));
         $invoice->date = $dateable;
 
@@ -671,31 +672,4 @@ class CreateTestData extends Command
         return $line_items;
     }
 
-    private function warmCache()
-    {
-        /* Warm up the cache !*/
-        $cached_tables = config('ninja.cached_tables');
-
-        foreach ($cached_tables as $name => $class) {
-            if (! Cache::has($name)) {
-                // check that the table exists in case the migration is pending
-                if (! Schema::hasTable((new $class())->getTable())) {
-                    continue;
-                }
-                if ($name == 'payment_terms') {
-                    $orderBy = 'num_days';
-                } elseif ($name == 'fonts') {
-                    $orderBy = 'sort_order';
-                } elseif (in_array($name, ['currencies', 'industries', 'languages', 'countries', 'banks'])) {
-                    $orderBy = 'name';
-                } else {
-                    $orderBy = 'id';
-                }
-                $tableData = $class::orderBy($orderBy)->get();
-                if ($tableData->count()) {
-                    Cache::forever($name, $tableData);
-                }
-            }
-        }
-    }
 }

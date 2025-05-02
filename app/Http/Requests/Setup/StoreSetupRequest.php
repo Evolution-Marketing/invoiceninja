@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -20,7 +21,7 @@ class StoreSetupRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
         return true;
     }
@@ -31,19 +32,11 @@ class StoreSetupRequest extends Request
             /*System*/
             'url'              => 'required',
             /*Mail driver*/
-            'mail_driver'      => 'required',
-            'encryption'       => 'required_unless:mail_driver,log',
-            'mail_host'        => 'required_unless:mail_driver,log',
-            'mail_username'    => 'required_unless:mail_driver,log',
-            'mail_name'        => 'required_unless:mail_driver,log',
-            'mail_address'     => 'required_unless:mail_driver,log',
-            'mail_password'    => 'required_unless:mail_driver,log',
-            /*user registration*/
             'privacy_policy'   => 'required',
             'terms_of_service' => 'required',
             'first_name'       => 'required',
             'last_name'        => 'required',
-            'email'            => 'required|email:rfc,dns',
+            'email'            => 'required|email',
             'password'         => 'required',
         ];
 

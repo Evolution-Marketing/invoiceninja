@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Cache;
  */
 class EmailStats
 {
-    const EMAIL = 'email_';
+    public const EMAIL = 'email_';
 
     /**
      * Increments the counter for emails sent
@@ -28,7 +29,7 @@ class EmailStats
      */
     public static function inc($company_key)
     {
-        Cache::increment(self::EMAIL.$company_key);
+        Cache::increment("email_quota".self::EMAIL.$company_key);
     }
 
     /**
@@ -57,12 +58,13 @@ class EmailStats
      * Iterates through a list of companies
      * and flushes the email sent data.
      *
-     * @param  Collection $companies The company key
+     * @param  \Illuminate\Database\Eloquent\Collection<\App\Models\Company> $companies The company key
      * @return void
      */
     public static function clearCompanies($companies)
     {
         $companies->each(function ($company) {
+            /** @var \App\Models\Company $company */
             self::clear($company->company_key);
         });
     }

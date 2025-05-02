@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,7 +13,6 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken as Middleware;
-use Illuminate\Session\TokenMismatchException;
 
 class VerifyCsrfToken extends Middleware
 {
@@ -26,20 +26,11 @@ class VerifyCsrfToken extends Middleware
     /**
      * The URIs that should be excluded from CSRF verification.
      *
-     * @var array
+     * @var array<int,string>
      */
     protected $except = [
-        // 'livewire/message/*'
+        'setup/*',
+        'setup'
     ];
 
-    // public function handle($request, \Closure $next) {
-
-    //     try {
-    //         return parent::handle($request, $next);
-    //     } catch (TokenMismatchException $ex) {
-
-    //         throw new TokenMismatchException('CSRF token mismatch.');
-
-    //     }
-    // }
 }

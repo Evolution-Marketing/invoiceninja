@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,19 +14,15 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\OneTimeToken\OneTimeRouterRequest;
 use App\Http\Requests\OneTimeToken\OneTimeTokenRequest;
+use App\Libraries\MultiDB;
 use App\Models\Company;
-use App\Models\CompanyUser;
 use App\Models\User;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class OneTimeTokenController extends BaseController
 {
-    private $contexts = [
-    ];
-
     public function __construct()
     {
         parent::__construct();
@@ -34,8 +31,8 @@ class OneTimeTokenController extends BaseController
     /**
      * Store a newly created resource in storage.
      *
-     * @param CreateOneTimeTokenRequest $request
-     * @return Response
+     * @param OneTimeTokenRequest $request
+     * @return Response| \Illuminate\Http\JsonResponse
      *
      * @OA\Post(
      *      path="/api/v1/one_time_token",
@@ -43,7 +40,6 @@ class OneTimeTokenController extends BaseController
      *      tags={"one_time_token"},
      *      summary="Attempts to create a one time token",
      *      description="Attempts to create a one time token",
-     *      @OA\Parameter(ref="#/components/parameters/X-Api-Secret"),
      *      @OA\Parameter(ref="#/components/parameters/X-Requested-With"),
      *      @OA\Response(
      *          response=200,
@@ -66,13 +62,21 @@ class OneTimeTokenController extends BaseController
      */
     public function create(OneTimeTokenRequest $request)
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $hash = Str::random(64);
 
         $data = [
-            'user_id' => auth()->user()->id,
-            'company_key'=> auth()->user()->company()->company_key,
+            'user_id' => $user->id,
+            'company_key' => $user->company()->company_key,
             'context' => $request->input('context'),
+            'is_react' => $request->hasHeader('X-REACT') ? true : false,
         ];
+
+        if ($request->institution_id) {
+            $data['institution_id'] = $request->institution_id;
+        }
 
         Cache::put($hash, $data, 3600);
 
@@ -84,10 +88,6 @@ class OneTimeTokenController extends BaseController
         $data = Cache::get($request->input('hash'));
 
         MultiDB::findAndSetDbByCompanyKey($data['company_key']);
-
-        // $user = User::findOrFail($data['user_id']);
-        // Auth::login($user, true);
-        // Cache::forget($request->input('hash'));
 
         $this->sendTo($data['context']);
     }

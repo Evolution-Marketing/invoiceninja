@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -18,7 +19,6 @@ use App\Exceptions\ProcessingMigrationArchiveFailed;
 use App\Exceptions\ResourceDependencyMissing;
 use App\Exceptions\ResourceNotAvailableForMigration;
 use App\Jobs\Util\Import;
-use App\Jobs\Util\StartMigration;
 use App\Mail\MigrationFailed;
 use App\Models\Account;
 use App\Models\Company;
@@ -64,8 +64,6 @@ class ImportMigrations extends Command
      */
     public function __construct()
     {
-        $this->faker = Factory::create();
-
         parent::__construct();
     }
 
@@ -76,7 +74,7 @@ class ImportMigrations extends Command
      */
     public function handle()
     {
-        $this->buildCache();
+        $this->faker = Factory::create();
 
         $path = $this->option('path') ?? public_path('storage/migrations/import');
 
@@ -105,9 +103,9 @@ class ImportMigrations extends Command
                     $import_file = public_path("storage/migrations/$filename/migration.json");
 
                     Import::dispatch($import_file, $this->getUser()->companies()->first(), $this->getUser());
-                    //   StartMigration::dispatch($file->getRealPath(), $this->getUser(), $this->getUser()->companies()->first());
+
                 } catch (NonExistingMigrationFile | ProcessingMigrationArchiveFailed | ResourceNotAvailableForMigration | MigrationValidatorFailed | ResourceDependencyMissing $e) {
-                    \Mail::to($this->user)->send(new MigrationFailed($e, $e->getMessage()));
+                    \Mail::to($user)->send(new MigrationFailed($e, $company));
 
                     if (app()->environment() !== 'production') {
                         info($e->getMessage());

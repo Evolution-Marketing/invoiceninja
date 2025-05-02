@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -42,7 +43,8 @@ class CreateInvitations extends AbstractService
         }
 
         $contacts->each(function ($contact) {
-            $invitation = CreditInvitation::whereCompanyId($this->credit->company_id)
+            $invitation = CreditInvitation::query()
+                ->where('company_id', $this->credit->company_id)
                 ->whereClientContactId($contact->id)
                 ->whereCreditId($this->credit->id)
                 ->withTrashed()
@@ -65,7 +67,7 @@ class CreateInvitations extends AbstractService
             } else {
                 $contact = $contacts->first();
 
-                $invitation = CreditInvitation::where('company_id', $this->credit->company_id)
+                $invitation = CreditInvitation::query()->where('company_id', $this->credit->company_id)
                                 ->where('client_contact_id', $contact->id)
                                 ->where('credit_id', $this->credit->id)
                                 ->withTrashed()

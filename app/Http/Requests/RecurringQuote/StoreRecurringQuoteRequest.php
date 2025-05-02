@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,12 +13,10 @@
 namespace App\Http\Requests\RecurringQuote;
 
 use App\Http\Requests\Request;
-use App\Http\ValidationRules\Recurring\UniqueRecurringQuoteNumberRule;
 use App\Models\Client;
 use App\Models\RecurringQuote;
 use App\Utils\Traits\CleanLineItems;
 use App\Utils\Traits\MakesHash;
-use Illuminate\Http\UploadedFile;
 
 class StoreRecurringQuoteRequest extends Request
 {
@@ -29,32 +28,32 @@ class StoreRecurringQuoteRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', RecurringQuote::class);
+
+        /** @var \App\Models\User auth()->user() */
+        $user = auth()->user();
+
+        return $user->can('create', RecurringQuote::class);
     }
 
     public function rules()
     {
+
+        /** @var \App\Models\User auth()->user() */
+        $user = auth()->user();
+
         $rules = [];
-
-        if ($this->input('documents') && is_array($this->input('documents'))) {
-            $documents = count($this->input('documents'));
-
-            foreach (range(0, $documents) as $index) {
-                $rules['documents.'.$index] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-            }
-        } elseif ($this->input('documents')) {
-            $rules['documents'] = 'file|mimes:png,ai,jpeg,tiff,pdf,gif,psd,txt,doc,xls,ppt,xlsx,docx,pptx|max:20000';
-        }
-
-        $rules['client_id'] = 'required|exists:clients,id,company_id,'.auth()->user()->company()->id;
+        $rules['file'] = 'bail|sometimes|array';
+        $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
+        $rules['client_id'] = 'required|exists:clients,id,company_id,'.$user->company()->id;
 
         $rules['invitations.*.client_contact_id'] = 'distinct';
 
         $rules['frequency_id'] = 'required|integer|digits_between:1,12';
-
-        $rules['number'] = new UniqueRecurringQuoteNumberRule($this->all());
+        $rules['number'] = ['bail', 'nullable', \Illuminate\Validation\Rule::unique('recurring_quotes')->where('company_id', $user->company()->id)];
 
         return $rules;
     }
@@ -66,10 +65,19 @@ class StoreRecurringQuoteRequest extends Request
 
         $input['line_items'] = isset($input['line_items']) ? $this->cleanItems($input['line_items']) : [];
 
+        if ($this->file('documents') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('documents', [$this->file('documents')]);
+        }
+
+        if ($this->file('file') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('file', [$this->file('file')]);
+        }
+
         if (isset($input['auto_bill'])) {
             $input['auto_bill_enabled'] = $this->setAutoBillFlag($input['auto_bill']);
         } else {
             if ($client = Client::find($input['client_id'])) {
+                /** @var \App\Models\Client $client */
                 $input['auto_bill'] = $client->getSetting('auto_bill');
                 $input['auto_bill_enabled'] = $this->setAutoBillFlag($input['auto_bill']);
             }

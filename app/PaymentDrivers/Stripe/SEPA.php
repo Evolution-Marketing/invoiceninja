@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,13 +15,15 @@ namespace App\PaymentDrivers\Stripe;
 use App\Exceptions\PaymentFailed;
 use App\Http\Requests\ClientPortal\Payments\PaymentResponseRequest;
 use App\Jobs\Util\SystemLogger;
+use App\Models\ClientGatewayToken;
 use App\Models\GatewayType;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\SystemLog;
+use App\PaymentDrivers\Common\LivewireMethodInterface;
 use App\PaymentDrivers\StripePaymentDriver;
 
-class SEPA
+class SEPA implements LivewireMethodInterface
 {
     /** @var StripePaymentDriver */
     public StripePaymentDriver $stripe;
@@ -46,33 +49,7 @@ class SEPA
 
     public function paymentView(array $data)
     {
-        $data['gateway'] = $this->stripe;
-        $data['payment_method_id'] = GatewayType::SEPA;
-        $data['stripe_amount'] = $this->stripe->convertToStripeAmount($data['total']['amount_with_fee'], $this->stripe->client->currency()->precision, $this->stripe->client->currency());
-        $data['client'] = $this->stripe->client;
-        $data['customer'] = $this->stripe->findOrCreateCustomer()->id;
-        $data['country'] = $this->stripe->client->country->iso_3166_2;
-        $data['payment_hash'] = $this->stripe->payment_hash->hash;
-
-        $intent_data = [
-            'amount' => $data['stripe_amount'],
-            'currency' => 'eur',
-            'payment_method_types' => ['sepa_debit'],
-            'setup_future_usage' => 'off_session',
-            'customer' => $this->stripe->findOrCreateCustomer(),
-            'description' => $this->stripe->decodeUnicodeString(ctrans('texts.invoices').': '.collect($data['invoices'])->pluck('invoice_number')),
-            'metadata' => [
-                'payment_hash' => $this->stripe->payment_hash->hash,
-                'gateway_type_id' => GatewayType::SEPA,
-            ],
-        ];
-
-        $intent = \Stripe\PaymentIntent::create($intent_data, $this->stripe->stripe_connect_auth);
-
-        $data['pi_client_secret'] = $intent->client_secret;
-
-        $this->stripe->payment_hash->data = array_merge((array) $this->stripe->payment_hash->data, ['stripe_amount' => $data['stripe_amount']]);
-        $this->stripe->payment_hash->save();
+        $data = $this->paymentData($data);
 
         return render('gateways.stripe.sepa.pay', $data);
     }
@@ -84,7 +61,7 @@ class SEPA
         $this->stripe->payment_hash->data = array_merge((array) $this->stripe->payment_hash->data, $request->all());
         $this->stripe->payment_hash->save();
 
-        if (property_exists($gateway_response, 'status') && ($gateway_response->status == 'processing' || $gateway_response->status === 'succeeded')) {
+        if (property_exists($gateway_response, 'status') && ($gateway_response->status == 'processing' || $gateway_response->status == 'succeeded')) {
             if ($request->store_card) {
                 $this->storePaymentMethod($gateway_response);
             }
@@ -147,7 +124,7 @@ class SEPA
         try {
             $method = $this->stripe->getStripePaymentMethod($intent->payment_method);
 
-            $payment_meta = new \stdClass;
+            $payment_meta = new \stdClass();
             $payment_meta->brand = (string) \sprintf('%s (%s)', $method->sepa_debit->bank_code, ctrans('texts.sepa'));
             $payment_meta->last4 = (string) $method->sepa_debit->last4;
             $payment_meta->state = 'authorized';
@@ -159,9 +136,74 @@ class SEPA
                 'payment_method_id' => GatewayType::SEPA,
             ];
 
+            $token = ClientGatewayToken::where([
+                'gateway_customer_reference' => $method->customer,
+                'token' => $method->id,
+                'client_id' => $this->stripe->client->id,
+                'company_id' => $this->stripe->client->company_id,
+            ])->first();
+
+            if ($token) {
+                return $token;
+            }
+
             $this->stripe->storeGatewayToken($data, ['gateway_customer_reference' => $method->customer]);
         } catch (\Exception $e) {
             return $this->stripe->processInternallyFailedPayment($this->stripe, $e);
         }
+    }
+
+    public function paymentData(array $data): array
+    {
+        $data['gateway'] = $this->stripe;
+        $data['payment_method_id'] = GatewayType::SEPA;
+        $data['stripe_amount'] = $this->stripe->convertToStripeAmount($data['total']['amount_with_fee'], $this->stripe->client->currency()->precision, $this->stripe->client->currency());
+        $data['client'] = $this->stripe->client;
+        $data['customer'] = $this->stripe->findOrCreateCustomer()->id;
+        $data['country'] = $this->stripe->client->country->iso_3166_2;
+        $data['payment_hash'] = $this->stripe->payment_hash->hash;
+
+
+        /** if the iban and client country don't match (OR UK IBAN) - need to inject billing details also */
+        // $data['billing_details'] = [
+        //     'name' => $this->stripe->client->present()->name(),
+        //     'email' => $this->stripe->client->present()->email(),
+        //     'address' => [
+        //         'line1' => $this->stripe->client->address1 ?? '',
+        //         'line2' => $this->stripe->client->address2 ?? '',
+        //         'city' => $this->stripe->client->city ?? '',
+        //         'state' => $this->stripe->client->state ?? '',
+        //         'postal_code' => $this->stripe->client->postal_code ?? '',
+        //         'country' => $this->stripe->client->country->iso_3166_2 ?? 'DE',
+        //     ]
+        // ];
+
+
+        $intent_data = [
+            'amount' => $data['stripe_amount'],
+            'currency' => 'eur',
+            'payment_method_types' => ['sepa_debit'],
+            'setup_future_usage' => 'off_session',
+            'customer' => $this->stripe->findOrCreateCustomer(),
+            'description' => $this->stripe->getDescription(false),
+            'metadata' => [
+                'payment_hash' => $this->stripe->payment_hash->hash,
+                'gateway_type_id' => GatewayType::SEPA,
+            ],
+        ];
+
+        $intent = \Stripe\PaymentIntent::create($intent_data, array_merge($this->stripe->stripe_connect_auth, ['idempotency_key' => uniqid("st", true)]));
+
+        $data['pi_client_secret'] = $intent->client_secret;
+
+        $this->stripe->payment_hash->data = array_merge((array) $this->stripe->payment_hash->data, ['stripe_amount' => $data['stripe_amount']]);
+        $this->stripe->payment_hash->save();
+
+        return $data;
+    }
+
+    public function livewirePaymentView(array $data): string
+    {
+        return 'gateways.stripe.sepa.pay_livewire';
     }
 }

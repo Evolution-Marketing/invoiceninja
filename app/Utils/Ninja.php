@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,13 +13,14 @@
 namespace App\Utils;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Class Ninja.
  */
 class Ninja
 {
-    const TEST_USERNAME = 'user@example.com';
+    public const TEST_USERNAME = 'user@example.com';
 
     public static function isSelfHost()
     {
@@ -42,14 +44,16 @@ class Ninja
 
     public static function getDebugInfo()
     {
-        $mysql_version = DB::select(DB::raw('select version() as version'))[0]->version;
+        $mysql_version = DB::select('select version() as version')[0]->version;
+
+        $version = request()->input('version', 'No Version Supplied.');
 
         $info = 'App Version: v'.config('ninja.app_version').'\\n'.
             'White Label: '.'\\n'. // TODO: Implement white label with hasFeature.
             'Server OS: '.php_uname('s').' '.php_uname('r').'\\n'.
             'PHP Version: '.phpversion().'\\n'.
             'MySQL Version: '.$mysql_version.'\\n'.
-            'Version: '.request()->has('version') ? request()->input('version') : 'No Version Supplied.';
+            'Version: '.$version;
 
         return $info;
     }
@@ -64,7 +68,7 @@ class Ninja
             'license' => config('ninja.license'),
         ];
 
-        $data = trim(CurlUtils::post('https://license.invoiceninja.com/api/check', $data));
+        $data = trim(CurlUtils::post('https://license.invoicing.co/api/check', $data));
         $data = json_decode($data);
 
         if ($data && property_exists($data, 'message') && $data->message == sha1(config('ninja.license'))) {
@@ -101,7 +105,8 @@ class Ninja
         foreach ($fields as $key => $value) {
             $data .= $key.'='.$value.'&';
         }
-        rtrim($data, '&');
+
+        $data = rtrim($data, '&');
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -128,11 +133,11 @@ class Ninja
             'ip' => $ip,
             'token' => request()->header('X-API-TOKEN'),
             'is_system' => app()->runningInConsole(),
-            'user_id' => $user_id,
+            'user_id' => (app()->runningInConsole() && $ip == '127.0.0.1') ? null : $user_id,
         ];
     }
 
-    public static function transformTranslations($settings) :array
+    public static function transformTranslations($settings): array
     {
         $translations = [];
 
@@ -147,6 +152,22 @@ class Ninja
         }
 
         return $translations;
+    }
+
+    public static function triggerForwarding(string $company_key, string $email)
+    {
+        try {
+            $x = Http::withHeaders([
+                'X-API-HOSTED-SECRET' => config('ninja.ninja_hosted_secret'),
+            ])->post(config('ninja.license_url').'/api/v1/enable_forwarding', [
+                'account_key' => $company_key,
+                'email' => $email,
+            ]);
+
+            nlog($x->body());
+        } catch (\Exception $e) {
+            nlog("Attempt forwarding for {$email} - {$company_key} Failed");
+        }
     }
 
     public function createLicense($request)
@@ -191,10 +212,9 @@ class Ninja
      * but can't guarantee that it is a base64 encoded string
      *
      */
-    public static function isBase64Encoded(string $s) : bool
+    public static function isBase64Encoded(string $s): bool
     {
-
-    // Check if there are valid base64 characters
+        // Check if there are valid base64 characters
         if (! preg_match('/^[a-zA-Z0-9\/\r\n+]*={0,2}$/', $s)) {
             return false;
         }

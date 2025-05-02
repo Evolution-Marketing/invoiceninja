@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -12,10 +13,8 @@
 namespace App\Http\Requests\Expense;
 
 use App\Http\Requests\Request;
-use App\Http\ValidationRules\Expense\UniqueExpenseNumberRule;
 use App\Models\Expense;
 use App\Models\Project;
-use App\Models\PurchaseOrder;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Validation\Rule;
 
@@ -28,57 +27,77 @@ class StoreExpenseRequest extends Request
      *
      * @return bool
      */
-    public function authorize() : bool
+    public function authorize(): bool
     {
-        return auth()->user()->can('create', Expense::class);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        return $user->can('create', Expense::class);
     }
 
     public function rules()
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $rules = [];
 
         if ($this->number) {
-            $rules['number'] = Rule::unique('expenses')->where('company_id', auth()->user()->company()->id);
+            $rules['number'] = Rule::unique('expenses')->where('company_id', $user->company()->id);
         }
 
-        if (! empty($this->client_id)) {
-            $rules['client_id'] = 'bail|sometimes|exists:clients,id,company_id,'.auth()->user()->company()->id;
+        if ($this->client_id) {
+            $rules['client_id'] = 'bail|sometimes|exists:clients,id,company_id,'.$user->company()->id;
         }
+
+        $rules['category_id'] = 'bail|nullable|sometimes|exists:expense_categories,id,company_id,'.$user->company()->id.',is_deleted,0';
+        $rules['payment_date'] = 'bail|nullable|sometimes|date:Y-m-d';
+        $rules['date'] = 'bail|sometimes|date:Y-m-d';
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['amount'] = ['sometimes', 'bail', 'nullable', 'numeric', 'max:99999999999999'];
+
+        $rules['file'] = 'bail|sometimes|array';
+        $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         return $this->globalRules($rules);
     }
 
     public function prepareForValidation()
     {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
         $input = $this->all();
 
         $input = $this->decodePrimaryKeys($input);
 
-        if (array_key_exists('category_id', $input) && is_string($input['category_id'])) {
-            $input['category_id'] = $this->decodePrimaryKey($input['category_id']);
+        if ($this->file('documents') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('documents', [$this->file('documents')]);
+        }
+
+        if ($this->file('file') instanceof \Illuminate\Http\UploadedFile) {
+            $this->files->set('file', [$this->file('file')]);
         }
 
         if (! array_key_exists('currency_id', $input) || strlen($input['currency_id']) == 0) {
-            $input['currency_id'] = (string) auth()->user()->company()->settings->currency_id;
+            $input['currency_id'] = (string) $user->company()->settings->currency_id;
         }
 
         if (array_key_exists('color', $input) && is_null($input['color'])) {
             $input['color'] = '';
         }
 
-
         /* Ensure the project is related */
         if (array_key_exists('project_id', $input) && isset($input['project_id'])) {
             $project = Project::withTrashed()->where('id', $input['project_id'])->company()->first();
 
-            if($project){
+            if ($project) {
                 $input['client_id'] = $project->client_id;
-            }
-            else
-            {
+            } else {
                 unset($input['project_id']);
             }
-
         }
 
 
@@ -88,7 +107,6 @@ class StoreExpenseRequest extends Request
     public function messages()
     {
         return [
-            // 'unique' => ctrans('validation.unique', ['attribute' => 'number']),
         ];
     }
 }

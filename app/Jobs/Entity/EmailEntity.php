@@ -1,29 +1,24 @@
 <?php
+
 /**
  * Invoice Ninja (https://invoiceninja.com).
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2022. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\Entity;
 
-use App\Events\Invoice\InvoiceReminderWasEmailed;
-use App\Events\Invoice\InvoiceWasEmailed;
-use App\Events\Invoice\InvoiceWasEmailedAndFailed;
-use App\Jobs\Mail\EntityFailedSendMailer;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
 use App\Libraries\MultiDB;
 use App\Mail\TemplateEmail;
-use App\Models\Activity;
 use App\Models\Company;
 use App\Models\CreditInvitation;
 use App\Models\InvoiceInvitation;
-use App\Models\PurchaseOrderInvitation;
 use App\Models\QuoteInvitation;
 use App\Models\RecurringInvoiceInvitation;
 use App\Utils\HtmlEngine;
@@ -34,14 +29,16 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /*Multi Mailer implemented*/
 
 class EmailEntity implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $invitation; //The entity invitation
 
@@ -63,18 +60,18 @@ class EmailEntity implements ShouldQueue
 
     public $tries = 1;
 
+    public string $db;
     /**
      * EmailEntity constructor.
      *
      *
-     * @param Invitation $invitation
-     * @param Company    $company
+     * @param mixed $invitation
      * @param ?string    $reminder_template
      * @param array      $template_data
      */
-    public function __construct($invitation, Company $company, ?string $reminder_template = null, $template_data = null)
+    public function __construct($invitation, string $db, ?string $reminder_template = null, $template_data = null)
     {
-        $this->company = $company;
+        $this->db = $db;
 
         $this->invitation = $invitation;
 
@@ -89,8 +86,6 @@ class EmailEntity implements ShouldQueue
         $this->html_engine = new HtmlEngine($invitation);
 
         $this->template_data = $template_data;
-
-        $this->email_entity_builder = $this->resolveEmailBuilder();
     }
 
     /**
@@ -99,15 +94,18 @@ class EmailEntity implements ShouldQueue
      *
      * @return void
      */
-    public function handle()
+    public function handle(): void
     {
-        /* Don't fire emails if the company is disabled */
-        if ($this->company->is_disabled) {
-            return true;
-        }
 
         /* Set DB */
-        MultiDB::setDB($this->company->db);
+        MultiDB::setDB($this->db);
+
+        /* Don't fire emails if the company is disabled */
+        if ($this->invitation->company->is_disabled) {
+            return;
+        }
+
+        $this->email_entity_builder = $this->resolveEmailBuilder();
 
         App::forgetInstance('translator');
         $t = app('translator');
@@ -117,20 +115,31 @@ class EmailEntity implements ShouldQueue
         /* Mark entity sent */
         $this->entity->service()->markSent()->save();
 
-        $nmo = new NinjaMailerObject;
-        $nmo->mailable = new TemplateEmail($this->email_entity_builder, $this->invitation->contact, $this->invitation);
-        $nmo->company = $this->company;
+        $nmo = new NinjaMailerObject();
+        $nmo->mailable = new TemplateEmail($this->email_entity_builder, $this->invitation->contact->withoutRelations(), $this->invitation->withoutRelations());
+        $nmo->company = $this->invitation->company->withoutRelations();
         $nmo->settings = $this->settings;
-        $nmo->to_user = $this->invitation->contact;
+        $nmo->to_user = $this->invitation->contact->withoutRelations();
         $nmo->entity_string = $this->entity_string;
-        $nmo->invitation = $this->invitation;
+        $nmo->invitation = $this->invitation->withoutRelations();
         $nmo->reminder_template = $this->reminder_template;
-        $nmo->entity = $this->entity;
+        $nmo->entity = $this->entity->withoutRelations();
 
-        (new NinjaMailerJob($nmo))->handle();
+        NinjaMailerJob::dispatch($nmo);
+
+        $nmo = null;
+        $this->invitation = null;
+        $this->company = null;
+        $this->entity_string = null;
+        $this->entity = null;
+        $this->settings = null;
+        $this->reminder_template = null;
+        $this->html_engine = null;
+        $this->template_data = null;
+        $this->email_entity_builder = null;
     }
 
-    private function resolveEntityString() :string
+    private function resolveEntityString(): string
     {
         if ($this->invitation instanceof InvoiceInvitation) {
             return 'invoice';
@@ -141,20 +150,8 @@ class EmailEntity implements ShouldQueue
         } elseif ($this->invitation instanceof RecurringInvoiceInvitation) {
             return 'recurring_invoice';
         }
-    }
 
-    /* Switch statement to handle failure notifications */
-    private function entityEmailFailed($message)
-    {
-        switch ($this->entity_string) {
-            case 'invoice':
-                event(new InvoiceWasEmailedAndFailed($this->invitation, $this->company, $message, $this->reminder_template, Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
-                break;
-
-            default:
-                // code...
-                break;
-        }
+        return '';
     }
 
     /* Builds the email builder object */
@@ -167,6 +164,7 @@ class EmailEntity implements ShouldQueue
 
     public function failed($e)
     {
-        // nlog($e->getMessage());
+        nlog("EmailEntity");
+        nlog($e->getMessage());
     }
 }

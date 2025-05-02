@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Quote Ninja (https://quoteninja.com).
  *
@@ -47,9 +48,9 @@ class UniqueQuoteNumberRule implements Rule
     /**
      * @return bool
      */
-    private function checkIfQuoteNumberUnique() : bool
+    private function checkIfQuoteNumberUnique(): bool
     {
-        $quote = Quote::where('client_id', $this->input['client_id'])
+        $quote = Quote::query()->where('client_id', $this->input['client_id'])
                         ->where('number', $this->input['number'])
                         ->withTrashed()
                         ->exists();
