@@ -40,11 +40,48 @@ class CompanyPresenter extends EntityPresenter
         }
 
         if (strlen($settings->company_logo) >= 1 && (strpos($settings->company_logo, 'http') !== false)) {
+            if ($temporary_url = $this->temporaryLogoUrl($settings->company_logo)) {
+                return $temporary_url;
+            }
+
             return $settings->company_logo;
         } elseif (strlen($settings->company_logo) >= 1) {
             return url('') . $settings->company_logo;
         } else {
             return asset('images/blank.png');
+        }
+    }
+
+    private function temporaryLogoUrl(string $logo_url): ?string
+    {
+        $disk = config('filesystems.default');
+        $disk_config = config("filesystems.disks.{$disk}", []);
+
+        if (($disk_config['driver'] ?? null) !== 's3' || ($disk_config['visibility'] ?? null) !== 'private') {
+            return null;
+        }
+
+        $url_path = parse_url($logo_url, PHP_URL_PATH);
+        $basename = basename(is_string($url_path) ? $url_path : $logo_url);
+
+        if (empty($basename)) {
+            return null;
+        }
+
+        $path = "{$this->company_key}/{$basename}";
+
+        try {
+            $storage = Storage::disk($disk);
+            $stored_url = strtok($storage->url($path), '?');
+            $logo_url_without_query = strtok($logo_url, '?');
+
+            if ($stored_url !== $logo_url_without_query) {
+                return null;
+            }
+
+            return $storage->temporaryUrl($path, now()->addHour());
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 
