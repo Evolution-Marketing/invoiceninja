@@ -29,7 +29,7 @@ class CompanyPresenterTest extends TestCase
         parent::tearDown();
     }
 
-    public function testPrivateS3LogoUsesTemporaryUrl(): void
+    public function testS3LogoWithoutPublicVisibilityUsesTemporaryUrl(): void
     {
         Carbon::setTestNow('2026-09-21 12:00:00 UTC');
 
@@ -37,7 +37,6 @@ class CompanyPresenterTest extends TestCase
             'filesystems.default' => 'private-logos',
             'filesystems.disks.private-logos' => [
                 'driver' => 's3',
-                'visibility' => 'private',
             ],
         ]);
 

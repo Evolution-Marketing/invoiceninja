@@ -57,7 +57,7 @@ class CompanyPresenter extends EntityPresenter
         $disk = config('filesystems.default');
         $disk_config = config("filesystems.disks.{$disk}", []);
 
-        if (($disk_config['driver'] ?? null) !== 's3' || ($disk_config['visibility'] ?? null) !== 'private') {
+        if (($disk_config['driver'] ?? null) !== 's3' || ($disk_config['visibility'] ?? null) === 'public') {
             return null;
         }
 
