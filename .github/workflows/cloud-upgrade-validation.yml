@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
+      UPGRADE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       APP_ENV: testing
       APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       APP_URL: http://localhost
@@ -35,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -50,7 +51,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --name-only --diff-filter=ACMR origin/cloud-v5.13.42...HEAD -- '*.php' |
+          git fetch --no-tags --depth=1 origin "$UPGRADE_BASE_SHA"
+          git diff --name-only --diff-filter=ACMR "$UPGRADE_BASE_SHA" HEAD -- '*.php' |
             while IFS= read -r path; do php -l "$path" >/dev/null; done
           echo 'Upgraded PHP files passed syntax validation.'
       - name: Verify Redis TLS and ACL configuration
