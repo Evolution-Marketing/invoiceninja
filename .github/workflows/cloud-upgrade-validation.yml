@@ -1,0 +1,73 @@
+name: Laravel Cloud upgrade validation
+
+on:
+  pull_request:
+    branches:
+      - cloud-v5.13.42
+
+permissions:
+  contents: read
+
+jobs:
+  cloud-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_URL: http://localhost
+      NINJA_ENVIRONMENT: selfhost
+      MULTI_DB_ENABLED: 'false'
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ':memory:'
+      CACHE_STORE: array
+      CACHE_DRIVER: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      SCOUT_DRIVER: 'null'
+      SENTRY_SAMPLE_RATE: '0'
+      SENTRY_TRACES_SAMPLE_RATE: '0'
+      SENTRY_PROFILES_SAMPLE_RATE: '0'
+      REDIS_SCHEME: tls
+      REDIS_USERNAME: upgrade-regression-user
+      REDIS_PASSWORD: upgrade-regression-password
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, curl, dom, gd, gmp, intl, mbstring, pdo_sqlite, zip
+          tools: composer:v2
+          coverage: none
+      - name: Install locked dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
+        run: composer install --no-interaction --prefer-dist --no-scripts --no-progress
+      - name: Check upgraded PHP syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only --diff-filter=ACMR origin/cloud-v5.13.42...HEAD -- '*.php' |
+            while IFS= read -r path; do php -l "$path" >/dev/null; done
+          echo 'Upgraded PHP files passed syntax validation.'
+      - name: Verify Redis TLS and ACL configuration
+        run: |
+          php <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $app = require 'bootstrap/app.php';
+          $config = require 'config/database.php';
+          foreach (['default', 'cache'] as $connection) {
+              if ($config['redis'][$connection]['scheme'] !== 'tls' ||
+                  $config['redis'][$connection]['username'] !== 'upgrade-regression-user' ||
+                  $config['redis'][$connection]['password'] !== 'upgrade-regression-password') {
+                  throw new RuntimeException('Redis TLS/ACL regression: ' . $connection);
+              }
+          }
+          echo 'Both Redis connections passed configuration checks.', PHP_EOL;
+          PHP
+      - name: Verify private storage company logo regressions
+        run: vendor/bin/phpunit --no-coverage tests/Unit/CompanyPresenterTest.php
