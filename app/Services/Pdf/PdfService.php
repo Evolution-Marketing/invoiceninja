@@ -13,6 +13,7 @@
 namespace App\Services\Pdf;
 
 use App\Models\Company;
+use App\Models\Credit;
 use App\Models\CreditInvitation;
 use App\Utils\Gotenberg\GotenbergPdf;
 use App\Models\Invoice;
@@ -22,6 +23,7 @@ use App\Models\QuoteInvitation;
 use App\Models\RecurringInvoiceInvitation;
 use App\Services\EDocument\ZugferdPdfMerger;
 use App\Utils\HostedPDF\NinjaPdf;
+use App\Utils\Pdf\SimulatedPdf;
 use App\Utils\HtmlEngine;
 use App\Utils\PhantomJS\Phantom;
 use App\Utils\Traits\Pdf\PageNumbering;
@@ -136,7 +138,7 @@ class PdfService
 
             if ($this->shouldMergeEInvoiceToPdf()) {
 
-                try{
+                try {
                     $pdf = $this->mergeEInvoiceToPdf($pdf);
                 } catch (\Throwable $e) {
                     nlog("ERROR MERGING E-INVOICE TO PDF: " . $e->getMessage());
@@ -354,6 +356,8 @@ class PdfService
         } elseif (config('ninja.pdf_generator') == 'gotenberg') {
             $pdfa = $this->shouldCreatePdfA3VisualPdf() ? GotenbergPdf::PDF_A_3B : null;
             $pdf = (new GotenbergPdf())->convertHtmlToPdf($html, $pdfa);
+        } elseif (config('ninja.pdf_generator') == 'simulator') {
+            $pdf = SimulatedPdf::generate($html);
         } else {
             $pdf = $this->makePdf(null, null, $html);
         }
@@ -370,7 +374,7 @@ class PdfService
 
     private function shouldCreatePdfA3VisualPdf(): bool
     {
-        return $this->config->entity instanceof Invoice
+        return ($this->config->entity instanceof Invoice || $this->config->entity instanceof Credit)
             && ZugferdPdfMerger::shouldMerge($this->config->entity, $this->config->settings);
 
     }
